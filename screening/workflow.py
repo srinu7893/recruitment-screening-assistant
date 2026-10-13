@@ -38,7 +38,7 @@ class ScreeningService:
             "source": {"source_id": source_id, "kind": "paste", "text": profile,
                        "sha256": hashlib.sha256(profile.encode()).hexdigest()},
             "provider": self.provider.name, "model": self.provider.model,
-            "prompt_version": PROMPT_VERSION, "demo": self.provider.name == "demo",
+            "prompt_version": PROMPT_VERSION, "demo": getattr(self.provider, "is_demo", self.provider.name == "demo"),
             "status": "received", "events": [{"status": "received", "at": now()}],
             "result": None, "error": None
         }

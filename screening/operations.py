@@ -97,17 +97,33 @@ def overview(store):
     runs = store.list_runs()
     hashes = Counter(r["source"]["sha256"] for r in runs)
     rows = [summary(r, hashes[r["source"]["sha256"]] - 1) for r in runs]
+    for row, run in zip(rows, runs):
+        row["display_name"] = run["source"].get("metadata", {}).get("display_name", "Profile " + run["candidate_id"][:8])
+    gaps = {}
+    for run in runs:
+        result = effective_result(run)
+        if not result:
+            continue
+        for criterion, assessment in zip(run["role_snapshot"]["criteria"], result["assessments"]):
+            key = (run["role_version"], criterion["id"])
+            item = gaps.setdefault(key, {"role_version": key[0], "criterion_id": key[1],
+                "description": criterion["description"], "required": criterion["required"],
+                "total": 0, "meets": 0, "partial": 0, "not_demonstrated": 0, "unmet": 0})
+            item["total"] += 1
+            item[assessment["status"]] += 1
     return {"runs": rows, "metrics": {
         "total": len(rows), "awaiting_review": sum(r["status"] == "awaiting_review" for r in rows),
         "failed": sum(r["status"] == "failed" for r in rows),
         "completed": sum(r["status"] == "completed" for r in rows),
         "demo": sum(r["demo"] for r in rows),
-        "by_recommendation": dict(Counter(r["recommendation"] for r in rows if r["recommendation"]))
+        "by_recommendation": dict(Counter(r["recommendation"] for r in rows if r["recommendation"])),
+        "by_source": dict(Counter(r["source_kind"] for r in rows)),
+        "criteria_gaps": list(gaps.values())
     }}
 
 
 def compare(store, ids):
-    if not isinstance(ids, list) or not 2 <= len(ids) <= 5 or len(set(ids)) != len(ids):
+    if not isinstance(ids, list) or not 2 <= len(ids) <= 5 or any(not isinstance(x, str) for x in ids) or len(set(ids)) != len(ids):
         raise ValueError("Choose 2 to 5 distinct runs")
     runs = [store.get_run(text(x, "run id", 120)) for x in ids]
     if len({r["role_version"] for r in runs}) != 1 or any(not r["result"] for r in runs):

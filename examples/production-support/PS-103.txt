@@ -1,0 +1,11 @@
+PS-103 | Database support specialist
+FICTIONAL SAMPLE — for product demonstration only
+
+PROFESSIONAL EXPERIENCE
+- Used Linux logs and process diagnostics while supporting overnight database jobs.
+- Investigated Oracle blocking sessions and slow SQL with approved read-only diagnostic queries.
+- Joined P1 bridges as the database subject-matter expert; another team owned incident coordination.
+- Investigated failed batch alerts by correlating scheduler output with database logs.
+- Documented how an index change caused a batch regression and verified the rollback.
+
+All organizations and work examples in this profile are fictional.

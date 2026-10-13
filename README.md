@@ -2,6 +2,12 @@
 
 A recruiter workspace for evidence-backed profile summaries, role-based screening and human decisions. The workflow controls ingestion, validation and routing; an optional LLM interprets job-related evidence.
 
+## Show it to your manager
+
+Open [showcase/index.html](showcase/index.html) locally for an interactive offline production-support dashboard. It includes six fictional resumes, authored summaries, evidence, coverage charts, filters, interview questions and requirement-change previews. No API key is needed. Follow the [five-minute showcase guide](docs/SHOWCASE.md).
+
+In the running demo application, admins can click **Load production-support showcase**. These curated records are clearly labeled and support hold decisions only.
+
 ## What you can use
 
 - Role creation with editable job-description drafts, required/preferred criteria, approval identity and immutable versions.

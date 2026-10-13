@@ -1,0 +1,11 @@
+PS-104 | Application support analyst
+FICTIONAL SAMPLE — for product demonstration only
+
+PROFESSIONAL EXPERIENCE
+- Completed Linux training and used basic commands in a lab; production servers were managed by another team.
+- Used SQL filters and joins to investigate customer transaction issues in production.
+- Owned application incident tickets, coordinated escalation and communicated recovery progress.
+- Used application dashboards and log searches to investigate failed API requests.
+- Contributed incident timelines to RCA documents; a senior engineer determined the underlying cause.
+
+All organizations and work examples in this profile are fictional.

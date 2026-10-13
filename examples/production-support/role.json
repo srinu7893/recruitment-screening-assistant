@@ -1,0 +1,49 @@
+{
+  "role_version": "showcase-production-support:v1",
+  "title": "Production Support Engineer \u00b7 Showcase",
+  "approved_by": "showcase-author",
+  "criteria": [
+    {
+      "id": "linux",
+      "description": "Linux troubleshooting",
+      "required": true,
+      "question": "Walk through a Linux production issue you diagnosed and the commands you used."
+    },
+    {
+      "id": "sql",
+      "description": "SQL investigation",
+      "required": true,
+      "question": "Describe a read-only SQL investigation and how you protected production data."
+    },
+    {
+      "id": "incident",
+      "description": "Production incident ownership",
+      "required": true,
+      "question": "Explain your role during a P1 incident, escalation and stakeholder communication."
+    },
+    {
+      "id": "monitoring",
+      "description": "Monitoring and log analysis",
+      "required": true,
+      "question": "Show how you move from an alert to relevant logs and a working hypothesis."
+    },
+    {
+      "id": "rca",
+      "description": "Root-cause analysis and prevention",
+      "required": false,
+      "question": "Describe a root-cause finding and the action that prevented recurrence."
+    },
+    {
+      "id": "automation",
+      "description": "Support automation",
+      "required": false,
+      "question": "What support task did you automate, and how did you validate it safely?"
+    },
+    {
+      "id": "cloud",
+      "description": "Cloud or container operations",
+      "required": false,
+      "question": "Describe a cloud or container incident you investigated personally."
+    }
+  ]
+}

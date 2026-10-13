@@ -45,6 +45,17 @@ class AccessTests(unittest.TestCase):
         except HTTPError as response:
             return response.code, response.read(), response.headers
 
+    def test_showcase_requires_admin_and_demo_workspace(self):
+        self.assertEqual(self.call('/showcase/load', {}, 'reviewer')[0], 403)
+        self.assertEqual(self.call('/showcase/load', {}, 'viewer')[0], 403)
+        self.assertEqual(self.call('/showcase/load', {})[0], 200)
+        original = self.service.provider.name
+        try:
+            self.service.provider.name = 'live-test'
+            self.assertEqual(self.call('/showcase/load', {})[0], 400)
+        finally:
+            self.service.provider.name = original
+
     def test_viewer_cannot_submit(self):
         self.assertEqual(self.call('/jobs',{},'viewer')[0],403)
 

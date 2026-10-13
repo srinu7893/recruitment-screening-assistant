@@ -1,0 +1,13 @@
+PS-102 | Cloud operations specialist
+FICTIONAL SAMPLE — for product demonstration only
+
+PROFESSIONAL EXPERIENCE
+- Diagnosed Linux disk pressure and memory exhaustion using df, du, free and process metrics.
+- Investigated failed orders with read-only PostgreSQL queries and transaction history.
+- Served as incident coordinator for a production outage and maintained the escalation timeline.
+- Used CloudWatch alarms and Kubernetes pod logs to investigate API error spikes.
+- Identified a connection-pool limit as the outage cause and verified the preventive configuration change.
+- Created shell scripts for log collection and validated output in a staging environment.
+- Troubleshot Kubernetes readiness failures and AWS load-balancer target health.
+
+All organizations and work examples in this profile are fictional.

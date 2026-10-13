@@ -133,10 +133,15 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     return self.reply(405, {"error": "method_not_allowed"})
                 if identity["role"] == "viewer":
                     return self.reply(403, {"error": "read_only_account"})
-                admin_paths = {"/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel"}
+                admin_paths = {"/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
                 if path in admin_paths and identity["role"] != "admin":
                     return self.reply(403, {"error": "admin_required"})
                 _, body = self.read_body()
+                if path == "/showcase/load":
+                    if service.provider.name != "demo":
+                        raise ValueError("Load showcase data only in a demo-mode workspace")
+                    from .showcase import seed
+                    return self.reply(200, seed(service.store, actor))
                 if path == "/roles":
                     body["approved_by"] = actor
                     role = service.create_role(body)
