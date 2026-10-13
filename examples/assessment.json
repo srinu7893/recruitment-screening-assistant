@@ -1,0 +1,15 @@
+{
+  "role_version": "backend-engineer:v1",
+  "criteria": [
+    {"id": "python-api", "required": true},
+    {"id": "aws", "required": false}
+  ],
+  "sources": {"synthetic-resume": "Built Python APIs for a fictional inventory service."},
+  "assessments": [
+    {
+      "criterion_id": "python-api",
+      "status": "meets",
+      "evidence": [{"source_id": "synthetic-resume", "quote": "Built Python APIs"}]
+    }
+  ]
+}
