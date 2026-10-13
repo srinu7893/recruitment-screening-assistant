@@ -1,48 +1,71 @@
-# Recruitment Screening Assistant
+# Shortlist — Recruitment Screening Assistant
 
-A workflow-controlled recruitment assistant with an LLM adapter for extraction and evaluation. Recruiters approve role criteria and make final hiring decisions.
+A recruiter workspace for evidence-backed profile summaries, role-based screening and human decisions. The workflow controls ingestion, validation and routing; an optional LLM interprets job-related evidence.
 
-## Current status
+## What you can use
 
-Step 2: pasted-profile workflow, immutable approved role versions, SQLite persistence, evidence-backed facts and summaries, review routing, authenticated local JSON API, and an OpenAI Responses adapter. The offline demo works without credentials. Live-provider behavior is covered by mocked transport tests; an actual model call and quality evaluation are still outstanding.
+- Role creation with editable job-description drafts, required/preferred criteria, approval identity and immutable versions.
+- Pasted profiles, batch PDF/DOCX/TXT uploads, scanned-PDF English OCR, CSV imports and allowlisted public HTTPS sources.
+- Durable background screening, explicit demo mode, OpenAI Responses adapter, evidence-backed summaries and criterion assessments.
+- Responsive recruiter dashboard: queue, filters, review panels, source excerpts, decisions, notes and evidence corrections.
+- Criterion comparison, interview guides, role-change previews and reassessment of saved profiles for new roles.
+- Signed webhooks, generic ATS exports and a configured JSON feed with optional scheduled synchronization.
+- Admin/reviewer/viewer tokens, audit events, duplicate-text notices, retention/deletion, JSON export and verified backups.
 
-This is a single-user development prototype. Uploads/OCR, browser dashboard, ATS connectors, real user accounts, production deployment and final-decision recording are not implemented yet.
+**Demo mode does not assess qualifications.** It copies excerpts, marks criteria not demonstrated, and allows hold decisions only. Live mode requires your configured model and API key. All hiring decisions remain with reviewers.
 
-## Run locally
-
-Requires Python 3.12 or newer. From the repository root:
-
-```sh
-python -m unittest discover -s tests -v
-python -m screening examples/assessment.json
-python -m examples.demo
-```
-
-The original CLI validates prestructured assessments. The new demo exercises pasted-profile ingestion, persistence and summary validation. **Demo mode only copies profile excerpts and marks every criterion not demonstrated; it never evaluates qualifications.** Live mode uses the configured model. An exact excerpt proves provenance, not that the interpretation is correct; a recruiter must review the evidence.
-
-## Local API quick start
-
-In a Bash terminal, generate an access token and start demo mode:
+## Start locally (Linux / Python 3.12+)
 
 ```sh
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+# Ubuntu/Debian: required for scanned PDF OCR
+sudo apt-get install poppler-utils tesseract-ocr fonts-dejavu-core
 export SCREENING_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
 python -m screening.server --provider demo
 ```
 
-Use the same token in your API client. See [API usage](docs/API.md) for requests. The server binds only to `127.0.0.1`; it is not a production server or a browser dashboard.
+Open **http://127.0.0.1:8000** and enter the token from your environment. Create a role in **Roles & criteria**, add synthetic profiles, and review them in **Review pipeline**. Tokens stay in browser memory and are cleared on refresh/sign-out. Originals are discarded after extraction; extracted profile text persists in the private data directory.
 
-For live mode, set `OPENAI_API_KEY` and `OPENAI_MODEL` securely in your environment, then run:
+For a quick terminal demo without installing document dependencies:
 
 ```sh
-python -m screening.server --provider openai
+python -m examples.demo
 ```
 
-Choose a model available to your account that supports Responses structured outputs. No model is silently selected. Live mode sends the supplied profile and role criteria to OpenAI; use synthetic examples until the workflow has been evaluated and your data handling approved. The adapter uses strict JSON-schema output, handles refusal/incomplete responses, and requests `store: false` ([official API guide](https://developers.openai.com/api/docs/guides/structured-outputs)). This setting is not a guarantee of zero provider retention.
+For live evaluation, set `OPENAI_API_KEY` and `OPENAI_MODEL` securely in the server environment, then run `python -m screening.server --provider openai`. Use a model that supports Responses structured outputs. No model is silently selected. Never paste API keys into GitHub or candidate text.
+
+## Run in Docker
+
+```sh
+export SCREENING_API_TOKEN="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+docker compose up --build
+```
+
+The Compose service defaults to demo mode and exposes port 8000 on loopback only. Set `SCREENING_PROVIDER=openai` plus the model/key for live mode. See [deployment and operations](docs/DEPLOYMENT.md).
+
+## Test
+
+```sh
+pip install -r requirements-dev.txt
+python -m unittest discover -s tests -v
+npm install
+npx playwright install chromium
+npm run test:ui
+```
+
+CI runs backend/document tests, real-browser acceptance and a container build. Synthetic inputs only. Test screenshots are downloadable from the Actions run; they are not committed as candidate artifacts.
 
 ## Documentation
 
-- [Delivery plan and feature backlog](docs/PLAN.md)
-- [Architecture and data contracts](docs/ARCHITECTURE.md)
-- [Local API and limitations](docs/API.md)
+- [Phase status and remaining acceptance gates](docs/PLAN.md)
+- [Features and market-informed additions](docs/FEATURES.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API and integration contract](docs/API.md)
+- [Deployment, accounts, backup and retention](docs/DEPLOYMENT.md)
+- [Validation and known limitations](docs/VALIDATION.md)
 
-No candidate documents, production records, or credentials belong in this repository. Use synthetic fixtures. Integration support will be added connector by connector, subject to supported APIs and access.
+## Scope and current limits
+
+This is a local, single-organization MVP, not a certified production hiring system. A quote match validates provenance, not whether an interpretation is correct. Live-model quality evaluation and real ATS-account verification remain external acceptance gates. The generic feed/webhook contracts need mapping for each ATS; arbitrary platforms are not automatically supported. SSO, tenant isolation, production TLS, encrypted storage deployment and independent security review remain production work. No external messages or ATS hiring-state changes are sent.

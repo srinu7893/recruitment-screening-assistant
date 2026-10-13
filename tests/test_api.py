@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from threading import Thread
 import unittest
+import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -54,8 +55,15 @@ class APITests(unittest.TestCase):
         role = json.loads((folder / "role.json").read_text())
         request = json.loads((folder / "profile-request.json").read_text())
         self.assertEqual(self.call("/roles", role)[0], 201)
-        status, run = self.call("/screenings", request)
-        self.assertEqual(status, 200)
+        status, job = self.call("/screenings", request)
+        self.assertEqual(status, 202)
+        deadline = time.monotonic() + 5
+        run = {}
+        while time.monotonic() < deadline:
+            _, run = self.call("/runs?id=" + request["request_id"])
+            if run.get("status") == "awaiting_review":
+                break
+            time.sleep(0.05)
         self.assertEqual(run["status"], "awaiting_review")
         self.assertEqual(self.call("/runs?id=" + request["request_id"])[1], run)
         self.assertEqual(self.call("/roles", role)[0], 409)

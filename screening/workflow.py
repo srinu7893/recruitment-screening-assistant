@@ -19,7 +19,7 @@ class ScreeningService:
         validate_role(role)
         return self.store.create_role(role)
 
-    def screen(self, request):
+    def screen(self, request, metadata=None):
         if not isinstance(request, dict) or set(request) != {"request_id", "role_version", "profile_text"}:
             raise ValueError("Expected request_id, role_version and profile_text")
         text(request["request_id"], "request_id", 120)
@@ -28,7 +28,8 @@ class ScreeningService:
         role = self.store.get_role(request["role_version"])
         fingerprint = hashlib.sha256(json.dumps({
             "request": request, "provider": self.provider.name,
-            "model": self.provider.model, "prompt_version": PROMPT_VERSION
+            "model": self.provider.model, "prompt_version": PROMPT_VERSION,
+            "metadata": metadata or {}
         }, sort_keys=True).encode()).hexdigest()
         source_id = str(uuid4())
         run = {
@@ -41,6 +42,11 @@ class ScreeningService:
             "status": "received", "events": [{"status": "received", "at": now()}],
             "result": None, "error": None
         }
+        run["revision"] = 0
+        run["created_at"] = now()
+        run["source"]["metadata"] = metadata or {}
+        if metadata and metadata.get("kind"):
+            run["source"]["kind"] = metadata["kind"]
         run, created = self.store.start_run(run, fingerprint)
         if not created:
             return run

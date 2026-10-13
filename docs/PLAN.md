@@ -1,49 +1,47 @@
-# Delivery plan
+# Delivery plan and phase status
 
-## Product goal
+Status labels distinguish implemented/tested software from external validation. A phase is not marked fully complete if its original acceptance gate still needs a real provider, platform, or pilot.
 
-Give recruiters consistent summaries and evidence-based comparisons against approved job requirements. Automate ingestion and processing; retain human responsibility for advancement and rejection. Missing information is not a failed requirement.
-
-## Architecture decision
-
-Use a controlled workflow with bounded LLM steps. The workflow owns status, retries, validation and routing. The model extracts and evaluates context against a fixed criteria version; it cannot alter criteria, execute instructions inside resumes, send messages, or change ATS hiring status. Start with one service and a worker before considering multiple autonomous agents.
-
-## Milestones and acceptance gates
-
-| Phase | Features | Acceptance gate | Status |
+| Phase | Shipped scope | Status | Remaining acceptance gate |
 | --- | --- | --- | --- |
-| 1 | Plan, architecture, structured assessment core, synthetic example, CI | Local tests and sample CLI pass | Implemented in foundation |
-| 2 | Approved role configuration, pasted profile, LLM adapter, grounded summaries and assessments | End-to-end profile-to-review on synthetic samples; invalid model output fails safely | Implemented locally; live-model quality gate pending |
-| 3 | PDF/DOCX uploads, file limits, scan/OCR fallback, batch jobs, deduplication | Normal/scanned/corrupt/duplicate inputs tested; errors visible | Next implementation increment |
-| 4 | Login, role editor, candidate list, evidence panel, reviewer corrections and decision history | Recruiter completes a review; unauthorized access denied | Planned |
-| 5 | Permitted URL imports, generic API/webhooks, first selected ATS connector | Auth, rate limits, retry and replay handling tested | Planned |
-| 6 | Pilot, monitoring, retention/deletion, deployment | Recruiter-labeled evaluation meets agreed thresholds; access and recovery checks pass | Planned |
+| 1 — Foundation | Architecture, contracts, deterministic screening, synthetic examples, CI | **Done** | None for foundation scope |
+| 2 — LLM screening | Approved role versions, pasted profiles, summaries, evidence validation, SQLite, model adapter | **Implementation done; live validation pending** | Configured model/key and recruiter-reviewed quality evaluation |
+| 3 — Documents | PDF/DOCX/TXT, bounded subprocess parser, English OCR, batches, duplicate-text notices, visible failures | **Done for local MVP** | Production malware scanning and broader multilingual/document corpus evaluation |
+| 4 — Recruiter workflow | Responsive dashboard, scoped tokens, role editor, evidence, correction history, notes, decisions, comparison | **Implementation done; browser acceptance in CI** | Real-browser CI must pass; SSO is outside local MVP |
+| 5 — Integrations | CSV, allowlisted URL reading, signed webhooks, JSON feed, schedules, import deduplication | **Generic integration layer done** | Named ATS mapping/account credentials and real-system smoke test |
+| 6 — Pilot and deployment | Container configuration, audit, metrics, retention, backups, queue recovery, tests | **Operational foundation done; pilot pending** | Container CI, live pilot quality targets, infrastructure security and production rollout |
 
-## Feature backlog
+## Completed features
 
-- Role criteria: explicit approval, immutable versions, required/preferred classification, acceptable evidence, clarification questions. Suggested criteria are drafts only.
-- Input: paste, single/bulk file upload, permitted URL reading, signed webhook and scheduled sync. Each source produces the same input envelope.
-- Extraction: responsibilities, projects, skills, employment intervals and relevant certifications with source references. Do not sum overlapping employment periods twice.
-- Summary: relevant experience, supported strengths, ambiguous claims, missing evidence and interview questions. Each factual claim links to evidence.
-- Assessment: meets, partial, not demonstrated, explicitly unmet. No unexplained suitability score. No sensitive characteristics or proxies as selection shortcuts.
-- Review: interview recommendation, clarification, or non-advancement review. Reviewer sees evidence and records the actual decision separately.
-- Operations: idempotency, bounded retries, failure queue, versioned prompts/models, cost and latency metrics, role-based access and tenant separation before multi-company use.
-- Integration: connector health, least-privilege credentials, source provenance, external identifiers. ATS writes come later behind explicit reviewer action.
+- [x] Workflow-controlled recommendations with a separate human decision record.
+- [x] Required/preferred criteria, immutable role versions and approval identity.
+- [x] Editable job-description drafts; explicitly line-based rather than falsely labeled AI-generated.
+- [x] Facts, summary claims, supporting excerpts and missing-evidence handling.
+- [x] PDF/DOCX/TXT ingestion, English OCR for scanned PDFs, limits and safe error states.
+- [x] Background jobs, duplicate request protection, cancellation and explicit recovery after crashes.
+- [x] Dashboard, search/filter, queue status, decisions, reviewer notes, corrections and optimistic revisions.
+- [x] Evidence comparison, interview kits, what-if required-criteria previews and talent rediscovery.
+- [x] CSV, HMAC webhooks, replay prevention, HTTPS source allowlist and pinned public DNS.
+- [x] Configurable JSON feed and optional timed synchronization.
+- [x] Role-scoped tokens, audit log, data deletion, retention, export and verified SQLite backup.
+- [x] Deployment recipe and CI coverage for API, documents, browser and container.
 
-## Step 2 implementation tasks
+## Bugs found and fixed during the expansion
 
-1. Done: immutable role records and run records embedding candidate/source IDs and role snapshots in SQLite.
-2. Done: pasted-text ingestion, 50,000-character limit, synthetic fixtures and request-id deduplication.
-3. Done: provider interface, extractive demo and configurable OpenAI Responses adapter.
-4. Done: schema-constrained facts, summary claims and criterion assessments; live calls still unverified.
-5. Done: strict shape and source-excerpt validation before deterministic routing.
-6. Done: authenticated loopback API and tests for success, failure, evidence, idempotency and untrusted-input separation. These tests do not establish live prompt-injection resistance.
-7. Pending quality gate: configure a model/key outside GitHub and evaluate live results against recruiter-reviewed synthetic examples.
+- Old synchronous API expectations were incompatible with background processing; submissions now return HTTP 202 and tests wait for completion.
+- OCR selected a broken environment wrapper; worker selection now prefers installed system Poppler/Tesseract executables.
+- Webhook replay checking had a concurrent check/insert race; claims are now atomic in SQLite.
+- Concurrent reviewers could overwrite each other's work; changes now require the current revision.
+- Corrected evidence could leave an outdated decision active; corrections reopen review and preserve decision history.
+- Running two servers against one database could corrupt recovery behavior; a process lock prevents this.
+- Shared token identities could undermine audit attribution; configured token values must be unique.
 
-## Evaluation
+## External gates still open
 
-Maintain synthetic regression fixtures and a separately controlled recruiter-labeled pilot dataset. Measure extraction correctness, unsupported claims, missed qualified candidates, agreement per criterion, review time, processing latency and cost. Agree numeric launch thresholds with the hiring team before the pilot. Evaluate outcomes across relevant groups only with an appropriate data-handling basis; never use those attributes for individual suitability decisions.
+- [ ] Select/configure a live model and measure correctness on recruiter-labeled examples.
+- [ ] Verify one real ATS feed/webhook mapping with the owner's credentials.
+- [ ] Agree numeric quality targets and run a recruiter pilot.
+- [ ] Configure production identity, TLS, encrypted storage, backup retention and access review.
+- [ ] Add malware scanning, multilingual OCR and large-volume worker infrastructure if required.
 
-## GitHub workflow
-
-Keep each increment small. Run unit tests for every change, add integration tests when an integration exists, and use branches/PRs for subsequent increments. CI contains no production credentials or candidate data. API keys and deployment secrets must be injected outside source control.
+Do not mark these gates done merely because an adapter, mock test or deployment file exists.

@@ -1,0 +1,74 @@
+/* Real-browser acceptance: synthetic profiles only. Screenshots go to ignored test-results. */
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const assert = require('node:assert/strict');
+(async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'screening-ui-'));
+  const token = crypto.randomBytes(32).toString('hex');
+  const server = spawn(process.env.PYTHON || 'python', ['-m', 'screening.server', '--db', path.join(directory, 'app.sqlite3'), '--port', '18765'], { env: {...process.env, SCREENING_API_TOKEN: token}, stdio: ['ignore', 'pipe', 'pipe'] });
+  let browser;
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error('Server did not start')), 10000);
+      server.stdout.on('data', chunk => {if (String(chunk).includes('Recruiter workspace:')) {clearTimeout(timer); resolve();}});
+      server.on('exit', code => {clearTimeout(timer); reject(Error('Server exited: '+code));});
+    });
+    browser = await chromium.launch({headless: true, args:['--no-sandbox']});
+    const page = await browser.newPage({viewport:{width:1440,height:1000}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.goto('http://127.0.0.1:18765');
+    await page.fill('#token', token);
+    await page.click('#login-form button');
+    await page.locator('#workspace:not([hidden])').waitFor();
+    await page.click('[data-tab="roles"]');
+    await page.fill('#role-title', 'Backend Engineer');
+    await page.fill('#role-version', 'backend:v1');
+    await page.check('#approve');
+    await page.click('#role-form button.primary');
+    await page.locator('.role-card').waitFor();
+    await page.click('[data-tab="intake"]');
+    await page.click('#sample');
+    await page.locator('#profile-text').fill('Built Python APIs for a fictional inventory service.\n<img src=x onerror="window.xss=true">');
+    await page.click('#paste-form button.primary');
+    await page.locator('#run-rows tr').first().waitFor({timeout:15000});
+    await page.click('[data-tab="intake"]');
+    await page.setInputFiles('#files', {name:'synthetic.txt',mimeType:'text/plain',buffer:Buffer.from('Built Python APIs for another fictional project.')});
+    await page.click('#upload-form button.primary');
+    await page.waitForFunction(() => document.getElementById('upload-progress').textContent.includes('1 queued'));
+    await page.click('[data-tab="pipeline"]');
+    await page.waitForFunction(() => document.querySelectorAll('#run-rows tr').length === 2, null, {timeout:15000});
+    await page.locator('#run-rows tr').first().getByRole('button',{name:'Review →'}).click();
+    await page.locator('#detail[open]').waitFor();
+    await page.locator('.decision-form textarea').fill('Demo review complete; hold for live evaluation.');
+    await page.getByRole('button',{name:'Record decision',exact:true}).click();
+    await page.waitForFunction(() => document.getElementById('detail-content').textContent.includes('operator · hold'));
+    await page.getByLabel('Private team note').fill('Ask for a concrete API ownership example.');
+    await page.getByRole('button',{name:'Add note',exact:true}).click();
+    await page.waitForFunction(() => document.getElementById('detail-content').textContent.includes('operator: Ask for'));
+    fs.mkdirSync('test-results',{recursive:true});
+    await page.screenshot({path:'test-results/profile-review.png',fullPage:true});
+    await page.click('#close-detail');
+    await page.locator('#run-rows input[type=checkbox]').nth(0).check();
+    await page.locator('#run-rows input[type=checkbox]').nth(1).check();
+    await page.click('#compare');
+    await page.locator('#comparison[open] table').waitFor();
+    assert.equal(await page.locator('#comparison tbody tr').count(),1);
+    await page.click('#close-comparison');
+    await page.screenshot({path:'test-results/dashboard-desktop.png',fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:'test-results/dashboard-mobile.png',fullPage:true});
+    assert.equal(await page.evaluate(() => Boolean(window.xss)),false);
+    assert.deepEqual(errors,[]);
+    console.log('UI acceptance passed: login, approved role, paste, upload, queue, review, note, comparison, safe text and responsive screenshots.');
+  } finally {
+    if(browser)await browser.close();
+    server.kill('SIGTERM');
+    await new Promise(resolve => {if(server.exitCode!==null)resolve();else server.once('exit',resolve);});
+    fs.rmSync(directory,{recursive:true,force:true});
+  }
+})().catch(error=>{console.error(error);process.exit(1);});
