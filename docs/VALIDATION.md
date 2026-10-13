@@ -11,6 +11,8 @@
 
 ## CI gates
 
+The [2026-10-13 CI run for commit 3e83977](https://github.com/srinu7893/recruitment-screening-assistant/actions/runs/38425142322) passed all of the following gates. Its screenshots are available in the ui-screenshots artifact.
+
 - Repeat the Python/document suite with OCR dependencies installed.
 - Real Chromium acceptance: login, role approval, paste/upload, background completion, review decision, notes, evidence comparison, safe rendering and desktop/mobile screenshots.
 - Build the Docker image.

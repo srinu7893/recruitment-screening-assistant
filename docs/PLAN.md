@@ -7,9 +7,9 @@ Status labels distinguish implemented/tested software from external validation. 
 | 1 — Foundation | Architecture, contracts, deterministic screening, synthetic examples, CI | **Done** | None for foundation scope |
 | 2 — LLM screening | Approved role versions, pasted profiles, summaries, evidence validation, SQLite, model adapter | **Implementation done; live validation pending** | Configured model/key and recruiter-reviewed quality evaluation |
 | 3 — Documents | PDF/DOCX/TXT, bounded subprocess parser, English OCR, batches, duplicate-text notices, visible failures | **Done for local MVP** | Production malware scanning and broader multilingual/document corpus evaluation |
-| 4 — Recruiter workflow | Responsive dashboard, scoped tokens, role editor, evidence, correction history, notes, decisions, comparison | **Implementation done; browser acceptance in CI** | Real-browser CI must pass; SSO is outside local MVP |
+| 4 — Recruiter workflow | Responsive dashboard, scoped tokens, role editor, evidence, correction history, notes, decisions, comparison | **Done for local MVP; browser CI passed** | SSO and per-job access are outside local MVP |
 | 5 — Integrations | CSV, allowlisted URL reading, signed webhooks, JSON feed, schedules, import deduplication | **Generic integration layer done** | Named ATS mapping/account credentials and real-system smoke test |
-| 6 — Pilot and deployment | Container configuration, audit, metrics, retention, backups, queue recovery, tests | **Operational foundation done; pilot pending** | Container CI, live pilot quality targets, infrastructure security and production rollout |
+| 6 — Pilot and deployment | Container configuration, audit, metrics, retention, backups, queue recovery, tests | **Operational foundation done; container CI passed; pilot pending** | Live pilot quality targets, infrastructure security and production rollout |
 
 ## Completed features
 
