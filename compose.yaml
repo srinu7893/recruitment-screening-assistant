@@ -1,0 +1,30 @@
+services:
+  recruiter:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      SCREENING_API_TOKEN: ${SCREENING_API_TOKEN:?Set a strong workspace token}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      SCREENING_ACCOUNTS: ${SCREENING_ACCOUNTS:-}
+      SCREENING_ALLOWED_HOSTS: ${SCREENING_ALLOWED_HOSTS:-}
+      SCREENING_WEBHOOK_SECRET: ${SCREENING_WEBHOOK_SECRET:-}
+      SCREENING_CONNECTOR_URL: ${SCREENING_CONNECTOR_URL:-}
+      SCREENING_CONNECTOR_TOKEN: ${SCREENING_CONNECTOR_TOKEN:-}
+      SCREENING_CONNECTOR_ROLE: ${SCREENING_CONNECTOR_ROLE:-}
+      SCREENING_SYNC_SECONDS: ${SCREENING_SYNC_SECONDS:-0}
+      SCREENING_RETENTION_DAYS: ${SCREENING_RETENTION_DAYS:-0}
+    command: ["python", "-m", "screening.server", "--host", "0.0.0.0", "--provider", "${SCREENING_PROVIDER:-demo}"]
+    volumes:
+      - recruitment-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    pids_limit: 128
+    restart: unless-stopped
+volumes:
+  recruitment-data:

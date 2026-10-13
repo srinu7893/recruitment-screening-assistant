@@ -1,0 +1,19 @@
+{
+  "role_version": "backend-engineer:v1",
+  "title": "Backend Engineer",
+  "approved_by": "demo-recruiter",
+  "criteria": [
+    {
+      "id": "python-api",
+      "description": "Hands-on experience building Python APIs",
+      "required": true,
+      "question": "Which Python APIs did you personally implement?"
+    },
+    {
+      "id": "aws",
+      "description": "Experience deploying services on AWS",
+      "required": false,
+      "question": "Describe your AWS deployment responsibilities."
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+.git
+.env*
+data
+uploads
+node_modules
+__pycache__
+*.sqlite3*
+test-results

@@ -1,38 +1,41 @@
-# Architecture and contracts
+# Architecture
 
-## Target system
+## Running system
 
-Upload, paste, URL and ATS adapters normalize input into SourceDocument records. A persisted workflow extracts text, calls a bounded model adapter, validates facts and assessments, then opens a recruiter review. Proposed later components: Python API/worker, PostgreSQL metadata, private object storage, and a web dashboard. These components are not installed in this foundation.
+A Python HTTP service serves the static recruiter dashboard and authenticated API. SQLite persists roles, runs, background jobs, audit events and webhook replay claims. One background worker processes queued profiles; a separate optional maintenance thread handles scheduled feed sync and retention.
 
-Workflow states: received, extracting, evaluating, validating, awaiting_review, completed, failed. Failures never become hiring rejections. Persist state transitions and retry count. Deduplicate within a tenant/source scope using an external event ID or document hash; never merge people solely by name.
+Inputs pass through normalization into the same profile-text contract. Documents are parsed in a bounded child process; originals live only in a temporary directory. OpenAI mode uses a schema-constrained Responses call with no tools, no profile URLs fetched by the model, a fixed HTTPS endpoint, socket timeout and bounded response. Demo mode is extractive and produces no suitability judgments.
 
-## Target records
+All model output passes local shape and exact-source-excerpt validation before deterministic routing. A reviewer sees the evidence and records the hiring decision separately. Free-text claims can still be semantically wrong despite matching an excerpt; this remains an evaluation/review responsibility.
 
-| Record | Essential fields |
+## Records
+
+| Record | Stored information |
 | --- | --- |
-| RoleVersion | role_id, version, description, criteria, approval actor/time |
-| SourceDocument | source_id, kind, external_id, hash, private object key, extracted text, page/offset map |
-| CandidateProfile | candidate_id, supported facts and evidence references |
-| ScreeningRun | run_id, candidate_id, role_version, source versions, model/prompt version, status |
-| Assessment | criterion_id, status, source references, rationale |
-| ReviewDecision | run_id, reviewer, decision, reason, timestamp |
+| Role version | Title, approved criteria, reviewer identity, approval timestamp; immutable |
+| Screening run | Candidate alias, source text/hash/provenance, role snapshot, model/prompt identity, states, results, errors, decisions/notes/corrections |
+| Job | Request, origin and status while queued; profile payload removed after processing/cancellation |
+| Audit | Actor, action, target and timestamp; no profile body |
+| Webhook event | Event identifier and timestamp for replay rejection |
 
-## Executable foundation input
+Candidate IDs are per run. Rediscovery records the parent run rather than claiming authoritative identity resolution. Duplicate notices compare exact extracted-text hashes; they never merge people by name.
 
-See examples/assessment.json. Required fields are role_version (nonempty string), criteria (nonempty list of unique id/required objects), sources (source ID to text mapping), and assessments (unique criterion_id/status objects with optional evidence). Each evidence item has source_id and an exact quote. Supported statuses: meets, partial, not_demonstrated, unmet. The latter means explicit contrary evidence, not silence. This foundation accepts pre-assessed evidence, not untrusted model output directly from a production API.
+## States and concurrency
 
-The core validates all supplied assessments, rejects unknown or repeated criterion IDs, and requires verified excerpts for every status other than not_demonstrated. Missing assessments are normalized to not_demonstrated. Any unresolved required criterion leads to needs_clarification; explicit unmet required criteria lead to review_non_advancement; all required criteria met leads to recommend_interview. Roles with no required criteria always go to needs_clarification. Preferred criteria appear in output but do not block an interview recommendation. Every output requires human review; no final hiring decision is emitted.
+Queued → processing → completed/failed/cancelled at the job layer. Runs move received → evaluating → validating → awaiting_review, or failed. A human advance/reject decision marks a run completed; hold leaves it awaiting review. Evidence corrections reopen review, preserve the original model result and invalidate the active decision with a recorded hold.
 
-## Boundaries
+SQLite transactions enforce immutable roles, unique request IDs, atomic webhook claims and revision-based human edits. One server process owns a database lock. After restart, interrupted runs/jobs are marked failed; they are not silently repeated, avoiding unobserved model charges. Retry/reassessment creates a new request ID. Queued unstarted jobs survive restart. A provider/model change prevents old queued jobs from silently using a different configuration.
 
-- Excerpt matching checks traceability only. It cannot prove entailment, detect contradictions, or validate the candidate's real-world claims. Future semantic checks and recruiter review address these separately.
-- Treat document text as data, never as system instructions. Models receive no execution tools or hiring-system write credentials.
-- Approve only job-relevant criteria. Remove sensitive personal attributes from model evaluation inputs where feasible; the current core is not a demographic filter.
-- Uploads require type/size checks, isolated parsing, malware controls and document retention rules before production.
-- URL imports require supported-source policy, redirect/IP validation and outbound restrictions to prevent SSRF; do not fetch arbitrary internal URLs.
-- Use scoped secrets, authorization per object, encrypted storage, and logs without raw profiles. CI tests use synthetic data only.
-- Webhooks require signature verification and replay protection. Retry transient errors with bounded backoff; permanent errors need visible remediation.
+## Trust boundaries
 
-## Testing boundaries
+- Admin, reviewer and viewer tokens grant different operations within one organization. There is no tenant isolation or SSO.
+- The dashboard uses same-origin requests and text-node rendering; tokens stay in memory. CSP blocks inline scripts and framing.
+- URL ingestion requires configured exact hosts, HTTPS, public resolved addresses and a connection pinned to the validated IP with TLS host verification. Redirects are refused. Feed credentials are sent only to the configured feed URL.
+- Signed webhooks bind timestamp, event ID and exact body; events outside five minutes or replayed IDs are rejected.
+- Upload checks enforce extensions, signatures, size, archive expansion, page count, time/CPU/memory and no macro/entity execution. The parser process is resource-bounded, not a complete security sandbox; production malware scanning is still a deployment gate.
+- Saved SQLite data is private to the OS account but is not encrypted by this application. Configure encrypted disks/backups for production.
+- No automated emails, outreach, ATS status updates or final model hiring decisions.
 
-Current tests cover deterministic routing and malformed evidence contracts. Live extraction, summary quality, prompt injection resistance, OCR, connectors, access control and deployment are later acceptance gates, not claims of current functionality.
+## External API reference
+
+The OpenAI adapter follows [official Structured Outputs guidance](https://developers.openai.com/api/docs/guides/structured-outputs) with strict schema output and handling for refusal/incomplete results. `store: false` is requested; it is not a promise of zero provider retention. The configured model must support the request format.

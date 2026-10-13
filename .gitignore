@@ -7,4 +7,9 @@ __pycache__/
 uploads/
 data/
 *.sqlite3
+*.sqlite3-*
 .pytest_cache/
+*.sqlite3.lock
+node_modules/
+test-results/
+playwright-report/
