@@ -2,9 +2,11 @@
 
 ## Target system
 
-Upload, paste, URL and ATS adapters normalize input into SourceDocument records. A persisted workflow extracts text, calls a bounded model adapter, validates facts and assessments, then opens a recruiter review. Proposed later components: Python API/worker, PostgreSQL metadata, private object storage, and a web dashboard. These components are not installed in this foundation.
+Target: upload, paste, URL and ATS adapters normalize input into source records. A persisted workflow extracts text, calls a bounded model adapter, validates facts and assessments, then opens a recruiter review. The current increment implements pasted text, a Python loopback API, SQLite records, a demo provider and an OpenAI Responses adapter. PostgreSQL, an asynchronous worker, private object storage and a web dashboard are later components.
 
 Workflow states: received, extracting, evaluating, validating, awaiting_review, completed, failed. Failures never become hiring rejections. Persist state transitions and retry count. Deduplicate within a tenant/source scope using an external event ID or document hash; never merge people solely by name.
+
+Current subset: received → evaluating → validating → awaiting_review, or failed. Calls are synchronous, with no automatic retries or background recovery. A request ID identifies a run; reusing it with identical input/provider returns that run without another model call. Different input with the same ID conflicts. Runs embed a new candidate ID, source text/hash, immutable role snapshot, provider/model/prompt version, and state events. Candidate identity resolution is not implemented. See API.md for crash recovery limits.
 
 ## Target records
 
@@ -35,4 +37,4 @@ The core validates all supplied assessments, rejects unknown or repeated criteri
 
 ## Testing boundaries
 
-Current tests cover deterministic routing and malformed evidence contracts. Live extraction, summary quality, prompt injection resistance, OCR, connectors, access control and deployment are later acceptance gates, not claims of current functionality.
+Current tests cover routing, evidence contracts, persisted workflow, local HTTP API authentication, idempotency, untrusted prompt separation, and provider response/timeout handling with mocked transport. Live extraction quality, semantic entailment, prompt injection resistance, OCR, connectors, multi-user authorization and deployment remain later acceptance gates.

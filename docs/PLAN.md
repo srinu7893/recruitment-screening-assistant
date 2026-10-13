@@ -13,8 +13,8 @@ Use a controlled workflow with bounded LLM steps. The workflow owns status, retr
 | Phase | Features | Acceptance gate | Status |
 | --- | --- | --- | --- |
 | 1 | Plan, architecture, structured assessment core, synthetic example, CI | Local tests and sample CLI pass | Implemented in foundation |
-| 2 | Approved role configuration, pasted profile, LLM adapter, grounded summaries and assessments | End-to-end profile-to-review on synthetic samples; invalid model output fails safely | Next |
-| 3 | PDF/DOCX uploads, file limits, scan/OCR fallback, batch jobs, deduplication | Normal/scanned/corrupt/duplicate inputs tested; errors visible | Planned |
+| 2 | Approved role configuration, pasted profile, LLM adapter, grounded summaries and assessments | End-to-end profile-to-review on synthetic samples; invalid model output fails safely | Implemented locally; live-model quality gate pending |
+| 3 | PDF/DOCX uploads, file limits, scan/OCR fallback, batch jobs, deduplication | Normal/scanned/corrupt/duplicate inputs tested; errors visible | Next implementation increment |
 | 4 | Login, role editor, candidate list, evidence panel, reviewer corrections and decision history | Recruiter completes a review; unauthorized access denied | Planned |
 | 5 | Permitted URL imports, generic API/webhooks, first selected ATS connector | Auth, rate limits, retry and replay handling tested | Planned |
 | 6 | Pilot, monitoring, retention/deletion, deployment | Recruiter-labeled evaluation meets agreed thresholds; access and recovery checks pass | Planned |
@@ -32,12 +32,13 @@ Use a controlled workflow with bounded LLM steps. The workflow owns status, retr
 
 ## Step 2 implementation tasks
 
-1. Add durable role, source, candidate and run records with approved criteria versions.
-2. Implement pasted-text ingestion with input limits and synthetic fixtures.
-3. Define an LLM provider interface plus deterministic fake for tests; choose provider/model before live wiring.
-4. Implement schema-constrained extraction and evidence-backed summary generation.
-5. Validate every model output before calling the existing routing engine.
-6. Add a minimal API and end-to-end tests for success, missing evidence, malformed output, timeout and prompt injection attempts.
+1. Done: immutable role records and run records embedding candidate/source IDs and role snapshots in SQLite.
+2. Done: pasted-text ingestion, 50,000-character limit, synthetic fixtures and request-id deduplication.
+3. Done: provider interface, extractive demo and configurable OpenAI Responses adapter.
+4. Done: schema-constrained facts, summary claims and criterion assessments; live calls still unverified.
+5. Done: strict shape and source-excerpt validation before deterministic routing.
+6. Done: authenticated loopback API and tests for success, failure, evidence, idempotency and untrusted-input separation. These tests do not establish live prompt-injection resistance.
+7. Pending quality gate: configure a model/key outside GitHub and evaluate live results against recruiter-reviewed synthetic examples.
 
 ## Evaluation
 

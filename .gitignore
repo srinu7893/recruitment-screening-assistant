@@ -7,4 +7,5 @@ __pycache__/
 uploads/
 data/
 *.sqlite3
+*.sqlite3-*
 .pytest_cache/
