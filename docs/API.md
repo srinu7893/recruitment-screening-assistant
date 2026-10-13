@@ -88,3 +88,7 @@ Files: 5 MB maximum; UTF-8 TXT; DOCX paragraphs/tables (no headers/footers/image
 ## Retry and recovery
 
 Identical repeated request IDs return the existing job, including failure/cancellation. Different payloads with the same ID conflict. Use a fresh ID for an explicit retry. Queued jobs survive restart; interrupted work becomes failed and is never silently rebilled. Rediscovery reuses stored text with a fresh run ID and selected role. One server process per database is enforced.
+
+## Showcase
+
+`POST /showcase/load` with `{}` requires an admin token and a demo-mode workspace. Loads six original fictional profiles idempotently and returns `run_ids`, `role_version` and a notice. Authored fixture records remain marked demo and cannot advance or reject candidates. `/runs` metrics include `by_source` and `criteria_gaps` grouped by immutable role version and criterion.

@@ -1,0 +1,13 @@
+PS-101 | Payments L2 specialist
+FICTIONAL SAMPLE — for product demonstration only
+
+PROFESSIONAL EXPERIENCE
+- Investigated Linux service failures using journalctl, systemctl and process-level diagnostics.
+- Used read-only SQL joins and execution plans to investigate payment reconciliation delays.
+- Owned P1 payment incidents, coordinated escalation and sent stakeholder updates every 30 minutes.
+- Correlated Splunk logs with Grafana latency alerts to isolate failing downstream services.
+- Led a post-incident review that traced retry storms to a timeout mismatch and added a regression test.
+- Built a Python health-check script with a dry-run mode and peer-reviewed rollout.
+- Observed an AWS failover exercise; the cloud platform team performed the changes.
+
+All organizations and work examples in this profile are fictional.

@@ -45,3 +45,13 @@ Status labels distinguish implemented/tested software from external validation. 
 - [ ] Add malware scanning, multilingual OCR and large-volume worker infrastructure if required.
 
 Do not mark these gates done merely because an adapter, mock test or deployment file exists.
+
+## Production-support showcase phase — Done
+
+- [x] Six original fictional resumes with evidence-validated authored summaries and expected routing.
+- [x] Public reference PDF reviewed; source link and short summary recorded without redistributing the PDF.
+- [x] Offline interactive dashboard, resume downloads, scenario filtering and guided manager walkthrough.
+- [x] Admin-only idempotent demo loading, named profile search and per-role criterion gap metrics.
+- [x] Regression coverage for fixture integrity, demo decision restrictions, permissions and invalid comparison IDs.
+
+External acceptance gates above remain unchanged.

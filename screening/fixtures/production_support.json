@@ -1,0 +1,517 @@
+{
+  "notice": "Original fictional samples with authored, evidence-validated results. Not live LLM output.",
+  "role": {
+    "role_version": "showcase-production-support:v1",
+    "title": "Production Support Engineer \u00b7 Showcase",
+    "approved_by": "showcase-author",
+    "criteria": [
+      {
+        "id": "linux",
+        "description": "Linux troubleshooting",
+        "required": true,
+        "question": "Walk through a Linux production issue you diagnosed and the commands you used."
+      },
+      {
+        "id": "sql",
+        "description": "SQL investigation",
+        "required": true,
+        "question": "Describe a read-only SQL investigation and how you protected production data."
+      },
+      {
+        "id": "incident",
+        "description": "Production incident ownership",
+        "required": true,
+        "question": "Explain your role during a P1 incident, escalation and stakeholder communication."
+      },
+      {
+        "id": "monitoring",
+        "description": "Monitoring and log analysis",
+        "required": true,
+        "question": "Show how you move from an alert to relevant logs and a working hypothesis."
+      },
+      {
+        "id": "rca",
+        "description": "Root-cause analysis and prevention",
+        "required": false,
+        "question": "Describe a root-cause finding and the action that prevented recurrence."
+      },
+      {
+        "id": "automation",
+        "description": "Support automation",
+        "required": false,
+        "question": "What support task did you automate, and how did you validate it safely?"
+      },
+      {
+        "id": "cloud",
+        "description": "Cloud or container operations",
+        "required": false,
+        "question": "Describe a cloud or container incident you investigated personally."
+      }
+    ]
+  },
+  "profiles": [
+    {
+      "id": "PS-101",
+      "title": "Payments L2 specialist",
+      "scenario": "Interview-ready evidence",
+      "profile_text": "PS-101 | Payments L2 specialist\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- Investigated Linux service failures using journalctl, systemctl and process-level diagnostics.\n- Used read-only SQL joins and execution plans to investigate payment reconciliation delays.\n- Owned P1 payment incidents, coordinated escalation and sent stakeholder updates every 30 minutes.\n- Correlated Splunk logs with Grafana latency alerts to isolate failing downstream services.\n- Led a post-incident review that traced retry storms to a timeout mismatch and added a regression test.\n- Built a Python health-check script with a dry-run mode and peer-reviewed rollout.\n- Observed an AWS failover exercise; the cloud platform team performed the changes.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "Experienced in Linux diagnostics and SQL-based investigation for payment services.",
+          "quotes": [
+            "Investigated Linux service failures using journalctl, systemctl and process-level diagnostics.",
+            "Used read-only SQL joins and execution plans to investigate payment reconciliation delays."
+          ]
+        },
+        {
+          "text": "Has direct incident ownership, monitoring, RCA and support automation evidence.",
+          "quotes": [
+            "Owned P1 payment incidents, coordinated escalation and sent stakeholder updates every 30 minutes.",
+            "Correlated Splunk logs with Grafana latency alerts to isolate failing downstream services.",
+            "Led a post-incident review that traced retry storms to a timeout mismatch and added a regression test.",
+            "Built a Python health-check script with a dry-run mode and peer-reviewed rollout."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Investigated Linux service failures using journalctl, systemctl and process-level diagnostics."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Used read-only SQL joins and execution plans to investigate payment reconciliation delays."
+          ]
+        },
+        {
+          "criterion_id": "incident",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Owned P1 payment incidents, coordinated escalation and sent stakeholder updates every 30 minutes."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Correlated Splunk logs with Grafana latency alerts to isolate failing downstream services."
+          ]
+        },
+        {
+          "criterion_id": "rca",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Led a post-incident review that traced retry storms to a timeout mismatch and added a regression test."
+          ]
+        },
+        {
+          "criterion_id": "automation",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Built a Python health-check script with a dry-run mode and peer-reviewed rollout."
+          ]
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Observed an AWS failover exercise; the cloud platform team performed the changes."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PS-102",
+      "title": "Cloud operations specialist",
+      "scenario": "Interview-ready evidence",
+      "profile_text": "PS-102 | Cloud operations specialist\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- Diagnosed Linux disk pressure and memory exhaustion using df, du, free and process metrics.\n- Investigated failed orders with read-only PostgreSQL queries and transaction history.\n- Served as incident coordinator for a production outage and maintained the escalation timeline.\n- Used CloudWatch alarms and Kubernetes pod logs to investigate API error spikes.\n- Identified a connection-pool limit as the outage cause and verified the preventive configuration change.\n- Created shell scripts for log collection and validated output in a staging environment.\n- Troubleshot Kubernetes readiness failures and AWS load-balancer target health.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "Production support experience spans Linux, PostgreSQL, AWS and Kubernetes troubleshooting.",
+          "quotes": [
+            "Diagnosed Linux disk pressure and memory exhaustion using df, du, free and process metrics.",
+            "Investigated failed orders with read-only PostgreSQL queries and transaction history.",
+            "Troubleshot Kubernetes readiness failures and AWS load-balancer target health."
+          ]
+        },
+        {
+          "text": "Provides concrete evidence of incident coordination, monitoring and preventive follow-up.",
+          "quotes": [
+            "Served as incident coordinator for a production outage and maintained the escalation timeline.",
+            "Used CloudWatch alarms and Kubernetes pod logs to investigate API error spikes.",
+            "Identified a connection-pool limit as the outage cause and verified the preventive configuration change."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Diagnosed Linux disk pressure and memory exhaustion using df, du, free and process metrics."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Investigated failed orders with read-only PostgreSQL queries and transaction history."
+          ]
+        },
+        {
+          "criterion_id": "incident",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Served as incident coordinator for a production outage and maintained the escalation timeline."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Used CloudWatch alarms and Kubernetes pod logs to investigate API error spikes."
+          ]
+        },
+        {
+          "criterion_id": "rca",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Identified a connection-pool limit as the outage cause and verified the preventive configuration change."
+          ]
+        },
+        {
+          "criterion_id": "automation",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Created shell scripts for log collection and validated output in a staging environment."
+          ]
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Troubleshot Kubernetes readiness failures and AWS load-balancer target health."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "PS-103",
+      "title": "Database support specialist",
+      "scenario": "Clarify incident ownership",
+      "profile_text": "PS-103 | Database support specialist\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- Used Linux logs and process diagnostics while supporting overnight database jobs.\n- Investigated Oracle blocking sessions and slow SQL with approved read-only diagnostic queries.\n- Joined P1 bridges as the database subject-matter expert; another team owned incident coordination.\n- Investigated failed batch alerts by correlating scheduler output with database logs.\n- Documented how an index change caused a batch regression and verified the rollback.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "Strong source evidence supports SQL investigation, Linux diagnostics and batch monitoring.",
+          "quotes": [
+            "Used Linux logs and process diagnostics while supporting overnight database jobs.",
+            "Investigated Oracle blocking sessions and slow SQL with approved read-only diagnostic queries.",
+            "Investigated failed batch alerts by correlating scheduler output with database logs."
+          ]
+        },
+        {
+          "text": "P1 participation is documented, but end-to-end incident ownership needs clarification.",
+          "quotes": [
+            "Joined P1 bridges as the database subject-matter expert; another team owned incident coordination."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Used Linux logs and process diagnostics while supporting overnight database jobs."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Investigated Oracle blocking sessions and slow SQL with approved read-only diagnostic queries."
+          ]
+        },
+        {
+          "criterion_id": "incident",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Joined P1 bridges as the database subject-matter expert; another team owned incident coordination."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Investigated failed batch alerts by correlating scheduler output with database logs."
+          ]
+        },
+        {
+          "criterion_id": "rca",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Documented how an index change caused a batch regression and verified the rollback."
+          ]
+        },
+        {
+          "criterion_id": "automation",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        }
+      ]
+    },
+    {
+      "id": "PS-104",
+      "title": "Application support analyst",
+      "scenario": "Clarify Linux depth",
+      "profile_text": "PS-104 | Application support analyst\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- Completed Linux training and used basic commands in a lab; production servers were managed by another team.\n- Used SQL filters and joins to investigate customer transaction issues in production.\n- Owned application incident tickets, coordinated escalation and communicated recovery progress.\n- Used application dashboards and log searches to investigate failed API requests.\n- Contributed incident timelines to RCA documents; a senior engineer determined the underlying cause.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "Has practical SQL investigation, application monitoring and incident-handling experience.",
+          "quotes": [
+            "Used SQL filters and joins to investigate customer transaction issues in production.",
+            "Owned application incident tickets, coordinated escalation and communicated recovery progress.",
+            "Used application dashboards and log searches to investigate failed API requests."
+          ]
+        },
+        {
+          "text": "Linux evidence is limited to training and lab work rather than demonstrated production troubleshooting.",
+          "quotes": [
+            "Completed Linux training and used basic commands in a lab; production servers were managed by another team."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Completed Linux training and used basic commands in a lab; production servers were managed by another team."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Used SQL filters and joins to investigate customer transaction issues in production."
+          ]
+        },
+        {
+          "criterion_id": "incident",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Owned application incident tickets, coordinated escalation and communicated recovery progress."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Used application dashboards and log searches to investigate failed API requests."
+          ]
+        },
+        {
+          "criterion_id": "rca",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Contributed incident timelines to RCA documents; a senior engineer determined the underlying cause."
+          ]
+        },
+        {
+          "criterion_id": "automation",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        }
+      ]
+    },
+    {
+      "id": "PS-105",
+      "title": "Early-career service desk analyst",
+      "scenario": "Explicitly unmet requirement",
+      "profile_text": "PS-105 | Early-career service desk analyst\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- I have not worked on Linux systems; my support experience is limited to Windows desktops.\n- Triaged desktop tickets and escalated service outages to the production support team.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "The profile describes desktop triage and escalation rather than production incident ownership.",
+          "quotes": [
+            "Triaged desktop tickets and escalated service outages to the production support team."
+          ]
+        },
+        {
+          "text": "The source explicitly states no Linux experience, which conflicts with a required criterion for this role.",
+          "quotes": [
+            "I have not worked on Linux systems; my support experience is limited to Windows desktops."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "unmet",
+          "rationale": "The source explicitly states the requirement is not met.",
+          "quotes": [
+            "I have not worked on Linux systems; my support experience is limited to Windows desktops."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "incident",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Triaged desktop tickets and escalated service outages to the production support team."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "rca",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "automation",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        }
+      ]
+    },
+    {
+      "id": "PS-106",
+      "title": "Support engineer with conflicting claims",
+      "scenario": "Clarify conflicting evidence",
+      "profile_text": "PS-106 | Support engineer with conflicting claims\nFICTIONAL SAMPLE \u2014 for product demonstration only\n\nPROFESSIONAL EXPERIENCE\n- Investigated Linux service startup failures and documented the recovery commands.\n- The skills section lists advanced SQL. The project section says database investigations were always handled by the DBA team.\n- Coordinated production incident bridges and recorded stakeholder updates and escalation decisions.\n- Correlated Datadog alerts and application logs to investigate availability incidents.\n- Listed participation in RCA meetings but did not describe a personal root-cause finding.\n- Automated collection of application logs using a reviewed shell script.\n\nAll organizations and work examples in this profile are fictional.\n",
+      "summary": [
+        {
+          "text": "Provides concrete Linux, monitoring, incident-coordination and scripting examples.",
+          "quotes": [
+            "Investigated Linux service startup failures and documented the recovery commands.",
+            "Correlated Datadog alerts and application logs to investigate availability incidents.",
+            "Coordinated production incident bridges and recorded stakeholder updates and escalation decisions.",
+            "Automated collection of application logs using a reviewed shell script."
+          ]
+        },
+        {
+          "text": "SQL claims need clarification because the skills section and described project responsibilities do not establish consistent hands-on evidence.",
+          "quotes": [
+            "The skills section lists advanced SQL. The project section says database investigations were always handled by the DBA team."
+          ]
+        }
+      ],
+      "assessments": [
+        {
+          "criterion_id": "linux",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Investigated Linux service startup failures and documented the recovery commands."
+          ]
+        },
+        {
+          "criterion_id": "sql",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "The skills section lists advanced SQL. The project section says database investigations were always handled by the DBA team."
+          ]
+        },
+        {
+          "criterion_id": "incident",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Coordinated production incident bridges and recorded stakeholder updates and escalation decisions."
+          ]
+        },
+        {
+          "criterion_id": "monitoring",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Correlated Datadog alerts and application logs to investigate availability incidents."
+          ]
+        },
+        {
+          "criterion_id": "rca",
+          "status": "partial",
+          "rationale": "The source describes limited or ambiguous responsibility; clarify before deciding.",
+          "quotes": [
+            "Listed participation in RCA meetings but did not describe a personal root-cause finding."
+          ]
+        },
+        {
+          "criterion_id": "automation",
+          "status": "meets",
+          "rationale": "The source describes relevant hands-on activity.",
+          "quotes": [
+            "Automated collection of application logs using a reviewed shell script."
+          ]
+        },
+        {
+          "criterion_id": "cloud",
+          "status": "not_demonstrated",
+          "rationale": "No source evidence supplied.",
+          "quotes": []
+        }
+      ]
+    }
+  ]
+}
