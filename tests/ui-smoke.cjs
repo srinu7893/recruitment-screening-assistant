@@ -67,6 +67,7 @@ const assert = require('node:assert/strict');
     await page.click('#close-comparison');
     await page.screenshot({path:'test-results/dashboard-desktop.png',fullPage:true});
     await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.locator('#logout').isVisible(), true);
     await page.screenshot({path:'test-results/dashboard-mobile.png',fullPage:true});
     assert.equal(await page.evaluate(() => Boolean(window.xss)),false);
     assert.deepEqual(errors,[]);
