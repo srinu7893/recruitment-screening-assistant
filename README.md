@@ -8,6 +8,12 @@ Open [showcase/index.html](showcase/index.html) locally for an interactive offli
 
 In the running demo application, admins can click **Load production-support showcase**. These curated records are clearly labeled and support hold decisions only.
 
+## Cloud deployment and persistent data
+
+The full app needs a Python/container host; GitHub Pages supports only the offline showcase. [Neon deployment guide](docs/NEON_DEPLOYMENT.md) covers PostgreSQL, verified TLS, public HTTPS configuration, health checks and migration from SQLite. Use `compose.neon.yaml` on a single container host with a stop-before-start deployment. Standard Cloud Run rolling deployment remains a separate worker-architecture task.
+
+Reviewer assignments now include priority, due dates, assigned-to-me/overdue filters and team workload analytics. These organize review work without changing candidate assessments.
+
 ## What you can use
 
 - Role creation with editable job-description drafts, required/preferred criteria, approval identity and immutable versions.

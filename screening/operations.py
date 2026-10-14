@@ -90,7 +90,8 @@ def summary(run, duplicates=0):
             "decision": run.get("decisions", [{}])[-1].get("decision"),
             "evidence_coverage": {"supported": evidenced, "total": len(rows)},
             "duplicate_count": duplicates, "error": run.get("error"),
-            "source_kind": run["source"].get("kind", "paste")}
+            "source_kind": run["source"].get("kind", "paste"),
+            "assignment": run.get("assignment", {"assignee": "", "priority": "normal", "due_date": ""})}
 
 
 def overview(store):
@@ -118,7 +119,7 @@ def overview(store):
         "demo": sum(r["demo"] for r in rows),
         "by_recommendation": dict(Counter(r["recommendation"] for r in rows if r["recommendation"])),
         "by_source": dict(Counter(r["source_kind"] for r in rows)),
-        "criteria_gaps": list(gaps.values())
+        "criteria_gaps": list(gaps.values()), "workload": workload(rows)
     }}
 
 
@@ -167,3 +168,42 @@ def expire(store, days, actor):
             except ConflictError:
                 pass
     return {"deleted": deleted, "retention_days": days}
+
+
+def assign(store, run_id, body, actor, reviewers):
+    """Work allocation only; priority is not a candidate score."""
+    owner = body.get('assignee', '')
+    if not isinstance(owner, str) or (owner and owner not in reviewers):
+        raise ValueError('Choose an active admin or reviewer')
+    priority = body.get('priority', 'normal')
+    if priority not in ('low', 'normal', 'high', 'urgent'):
+        raise ValueError('Invalid review priority')
+    due = body.get('due_date', '')
+    if not isinstance(due, str):
+        raise ValueError('Due date must be YYYY-MM-DD')
+    if due:
+        from datetime import date
+        try:
+            if date.fromisoformat(due).isoformat() != due:
+                raise ValueError()
+        except ValueError:
+            raise ValueError('Due date must be YYYY-MM-DD') from None
+    def change(run):
+        assignment = {'assignee': owner, 'priority': priority, 'due_date': due, 'by': actor, 'at': now()}
+        run['assignment'] = assignment
+        run.setdefault('assignment_history', []).append(assignment)
+    return store.mutate_run(run_id, body.get('revision'), actor, 'review_assigned', change)
+
+
+def workload(rows):
+    today = datetime.now(timezone.utc).date().isoformat()
+    pending = [r for r in rows if r['status'] == 'awaiting_review']
+    owners = {}
+    for row in pending:
+        owner = row['assignment'].get('assignee') or 'Unassigned'
+        item = owners.setdefault(owner, {'assignee': owner, 'pending': 0, 'overdue': 0, 'urgent': 0})
+        item['pending'] += 1
+        item['overdue'] += bool(row['assignment'].get('due_date') and row['assignment']['due_date'] < today)
+        item['urgent'] += row['assignment'].get('priority') == 'urgent'
+    return {'unassigned': sum(not r['assignment'].get('assignee') for r in pending),
+            'overdue': sum(v['overdue'] for v in owners.values()), 'reviewers': list(owners.values())}

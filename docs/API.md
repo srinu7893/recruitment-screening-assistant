@@ -92,3 +92,11 @@ Identical repeated request IDs return the existing job, including failure/cancel
 ## Showcase
 
 `POST /showcase/load` with `{}` requires an admin token and a demo-mode workspace. Loads six original fictional profiles idempotently and returns `run_ids`, `role_version` and a notice. Authored fixture records remain marked demo and cannot advance or reject candidates. `/runs` metrics include `by_source` and `criteria_gaps` grouped by immutable role version and criterion.
+
+## Team work management and deployment
+
+- `GET /reviewers`: authenticated list of active admin/reviewer names and roles; no credential hashes.
+- `POST /assignments`: reviewer/admin; `{run_id, revision, assignee, priority, due_date}`. Assignee may be blank or an active reviewer/admin; priority is low/normal/high/urgent; due date is blank or YYYY-MM-DD in UTC. Uses optimistic revision checks and preserves assignment history. Does not change suitability or a hiring decision.
+- `/runs` rows include assignment; metrics include workload by reviewer, unassigned and overdue counts for awaiting-review records.
+- `GET /readyz`: public status-only 200/503 readiness; Host/Origin validation still applies.
+- `/health`: authenticated response now includes database type (never connection credentials).

@@ -17,44 +17,47 @@ class ConflictError(ValueError):
 
 class Store:
     def __init__(self, path):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        # Create with private permissions rather than relying on the caller's umask.
-        if not self.path.exists():
-            self.path.touch(mode=0o600, exist_ok=False)
+        from .database import Database
+        self.database = Database(path)
+        self.path = self.database.path
+        self.backend = 'postgresql' if self.database.postgres else 'sqlite'
+        serial = 'BIGSERIAL' if self.database.postgres else 'INTEGER'
+        ordering = ', rowid BIGSERIAL UNIQUE' if self.database.postgres else ''
         with self.connect() as db:
-            db.executescript("""
-                PRAGMA secure_delete=ON;
+            db.executescript(f"""
                 CREATE TABLE IF NOT EXISTS roles (
-                    version TEXT PRIMARY KEY, document TEXT NOT NULL);
+                    version TEXT PRIMARY KEY, document TEXT NOT NULL{ordering});
                 CREATE TABLE IF NOT EXISTS runs (
-                    id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, document TEXT NOT NULL);
+                    id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, document TEXT NOT NULL{ordering});
                 CREATE TABLE IF NOT EXISTS jobs (
                     id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, status TEXT NOT NULL,
-                    document TEXT NOT NULL);
+                    document TEXT NOT NULL{ordering});
                 CREATE TABLE IF NOT EXISTS audit (
-                    id INTEGER PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL,
+                    id {serial} PRIMARY KEY, at TEXT NOT NULL, actor TEXT NOT NULL,
                     action TEXT NOT NULL, target TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS webhook_events (
-                    id TEXT PRIMARY KEY, at REAL NOT NULL);
+                    id TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
+                CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
             """)
 
-    @contextmanager
     def connect(self):
-        db = sqlite3.connect(self.path, timeout=10)
-        db.execute("PRAGMA secure_delete=ON")
-        try:
-            with db:
-                yield db
-        finally:
-            db.close()
+        return self.database.connect()
+
+    def acquire_instance(self):
+        return self.database.acquire_instance()
+
+    def ready(self):
+        with self.connect() as db:
+            return db.execute('SELECT 1').fetchone()[0] == 1
 
     def create_role(self, role):
         document = {**role, "approved_at": now()}
         try:
             with self.connect() as db:
-                db.execute("INSERT INTO roles VALUES (?, ?)",
+                cursor = db.execute("INSERT OR IGNORE INTO roles(version, document) VALUES (?, ?)",
                            (role["role_version"], json.dumps(document)))
+                if cursor.rowcount != 1:
+                    raise ConflictError("Role version already exists; create a new version")
         except sqlite3.IntegrityError:
             raise ConflictError("Role version already exists; create a new version") from None
         return document
@@ -68,7 +71,7 @@ class Store:
 
     def start_run(self, run, fingerprint):
         with self.connect() as db:
-            cursor = db.execute("INSERT OR IGNORE INTO runs VALUES (?, ?, ?)",
+            cursor = db.execute("INSERT OR IGNORE INTO runs(id, fingerprint, document) VALUES (?, ?, ?)",
                                 (run["run_id"], fingerprint, json.dumps(run)))
             if cursor.rowcount == 1:
                 return run, True
