@@ -63,6 +63,23 @@ class PostgreSQLTests(unittest.TestCase):
             time.sleep(.05)
         self.fail('Timed out waiting for cloud worker state')
 
+    def test_recovery_preserves_assessment_committed_before_job_completion(self):
+        seed(self.store)
+        q = Queue(ScreeningService(self.store, DemoProvider()))
+        role = self.store.list_roles()[0]['role_version']
+        q.submit({'request_id':'commit-boundary','role_version':role,'profile_text':'Used Linux logs'})
+        q.process_one()
+        with self.store.connect() as db:
+            raw = json.loads(db.execute("SELECT document FROM jobs WHERE id = ?", ('commit-boundary',)).fetchone()[0])
+            raw['status']='processing'
+            db.execute("UPDATE jobs SET status='processing', document=? WHERE id=?", (json.dumps(raw),'commit-boundary'))
+        q.start()
+        try:
+            self.wait_for(lambda:any(j['id']=='commit-boundary' and j['status']=='completed' for j in q.list()))
+            self.assertEqual(self.store.get_run('commit-boundary')['status'],'awaiting_review')
+        finally:
+            q.close()
+
     def test_overlapping_revisions_and_worker_handoff(self):
         seed(self.store)
         q1 = Queue(ScreeningService(self.store, DemoProvider()))

@@ -76,17 +76,21 @@ class Queue:
             rows = db.execute("SELECT id, document FROM jobs WHERE status = 'processing'").fetchall()
             for key, document in rows:
                 job = json.loads(document)
-                job.update(status="failed", error="interrupted_retry_with_new_id")
-                job.pop("request", None)
-                db.execute("UPDATE jobs SET status = 'failed', document = ? WHERE id = ?", (json.dumps(job), key))
-            for key, _ in rows:
                 saved = db.execute("SELECT document FROM runs WHERE id = ?", (key,)).fetchone()
-                if not saved:
-                    continue
-                run = json.loads(saved[0])
-                if run["status"] in ("received", "evaluating", "validating"):
-                    run.update(status="failed", error="interrupted_retry_with_new_id", result=None)
-                    db.execute("UPDATE runs SET document = ? WHERE id = ?", (json.dumps(run), key))
+                run = json.loads(saved[0]) if saved else None
+                # The assessment may have committed just before the process lost
+                # ownership, while the job completion write was still pending.
+                if run and run['status'] in ('awaiting_review', 'completed') and run.get('result'):
+                    job.update(status='completed', error=None)
+                else:
+                    error = run.get('error') if run and run['status'] == 'failed' else 'interrupted_retry_with_new_id'
+                    job.update(status='failed', error=error or 'job_failed')
+                    if run and run['status'] in ('received', 'evaluating', 'validating'):
+                        run.update(status='failed', error='interrupted_retry_with_new_id', result=None)
+                        db.execute("UPDATE runs SET document = ? WHERE id = ?", (json.dumps(run), key))
+                job.pop('request', None)
+                db.execute("UPDATE jobs SET status = ?, document = ? WHERE id = ?", (job['status'], json.dumps(job), key))
+
     def start(self):
         if self.store.backend != 'postgresql':
             self.recover()
