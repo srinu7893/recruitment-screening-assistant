@@ -14,6 +14,7 @@ class Queue:
         self.store = service.store
         self.stop = Event()
         self.thread = None
+        self.last_error = None
 
     def submit(self, request, metadata=None, actor="operator"):
         if not isinstance(request, dict) or set(request) != {"request_id", "role_version", "profile_text"}:
@@ -39,7 +40,7 @@ class Queue:
                 raise ConflictError("Run ID already exists")
             if db.execute("SELECT count(*) FROM jobs WHERE status IN ('queued','processing')").fetchone()[0] >= 100:
                 raise ConflictError("Queue is full; wait for processing")
-            db.execute("INSERT INTO jobs VALUES (?, ?, ?, ?)", (job["id"], fingerprint, "queued", json.dumps(job)))
+            db.execute("INSERT INTO jobs(id, fingerprint, status, document) VALUES (?, ?, ?, ?)", (job["id"], fingerprint, "queued", json.dumps(job)))
             db.execute("INSERT INTO audit(at, actor, action, target) VALUES (?, ?, ?, ?)",
                        (now(), actor, "profile_submitted", job["id"]))
         return self.public(job)
@@ -110,10 +111,12 @@ class Queue:
         while not self.stop.is_set():
             try:
                 processed = self.process_one()
+                self.last_error = None
             except Exception:
+                self.last_error = "queue_database_unavailable"
                 processed = False
             if not processed:
-                self.stop.wait(0.25)
+                self.stop.wait(2 if self.store.backend == "postgresql" else 0.25)
 
     def close(self):
         self.stop.set()

@@ -56,6 +56,16 @@ class AccessTests(unittest.TestCase):
         finally:
             self.service.provider.name = original
 
+    def test_readiness_and_reviewer_directory(self):
+        status, raw, _ = self.call('/readyz', headers={'Authorization':''})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(raw), {'status':'ready'})
+        status, raw, _ = self.call('/reviewers')
+        self.assertEqual(status, 200)
+        self.assertEqual({a['name'] for a in json.loads(raw)}, {'admin','reviewer'})
+        self.assertNotIn(b'hash', raw)
+        self.assertEqual(self.call('/assignments', {}, 'viewer')[0], 403)
+
     def test_viewer_cannot_submit(self):
         self.assertEqual(self.call('/jobs',{},'viewer')[0],403)
 

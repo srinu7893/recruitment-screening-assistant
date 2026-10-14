@@ -1,7 +1,7 @@
 """Recruiter dashboard and local authenticated API; one organization per instance."""
 import argparse
 import base64
-import fcntl
+import signal
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -19,6 +19,8 @@ from .jobs import Queue
 from . import operations
 from .providers import DemoProvider, OpenAIProvider
 from .storage import ConflictError, Store
+from .database import DatabaseUnavailable
+from .deployment import public_origin, allowed_request
 from .workflow import ScreeningService
 
 MAX_BODY = 7_100_000
@@ -28,6 +30,7 @@ STATIC = Path(__file__).with_name("static")
 def make_server(service, token=None, port=8000, accounts=None, config=None, host="127.0.0.1"):
     auth = Auth(token, accounts)
     config = config or {"allowed_hosts": set()}
+    external = public_origin(config.get("public_url"))
     limiter = RateLimit()
     parsing = BoundedSemaphore(2)
     queue = Queue(service)
@@ -73,15 +76,18 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
         def handle_api(self):
             try:
                 authority = self.headers.get("Host", "")
-                valid_hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
-                if authority not in valid_hosts:
-                    return self.reply(403, {"error": "invalid_host"})
                 origin = self.headers.get("Origin")
-                if origin and origin != "http://" + authority:
-                    return self.reply(403, {"error": "cross_origin_denied"})
+                if not allowed_request(authority, origin, self.server.server_port, external):
+                    return self.reply(403, {"error": "invalid_host_or_origin"})
                 url = urlsplit(self.path)
                 query = parse_qs(url.query)
                 path = url.path
+                if self.command == "GET" and path == "/readyz":
+                    try:
+                        ready = service.store.ready() and queue.thread is not None and queue.thread.is_alive() and not queue.last_error
+                    except Exception:
+                        ready = False
+                    return self.reply(200 if ready else 503, {"status": "ready" if ready else "unavailable"})
                 if self.command == "GET" and path in ("/", "/app.js", "/style.css"):
                     filename, mime = {"/": ("index.html", "text/html; charset=utf-8"),
                                       "/app.js": ("app.js", "text/javascript; charset=utf-8"),
@@ -107,7 +113,10 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                 if self.command == "GET":
                     if path == "/health":
                         return self.reply(200, {"status": "ok", "provider": service.provider.name,
-                                               "identity": identity, "demo": service.provider.name == "demo"})
+                                               "identity": identity, "demo": service.provider.name == "demo",
+                                               "database": service.store.backend})
+                    if path == "/reviewers":
+                        return self.reply(200, [{"name": a["name"], "role": a["role"]} for a in auth.accounts if a["role"] != "viewer"])
                     if path == "/roles":
                         return self.reply(200, service.store.get_role(query["version"][0]) if "version" in query else service.store.list_roles())
                     if path == "/runs":
@@ -191,6 +200,9 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     return self.reply(200, operations.compare(service.store, body.get("run_ids")))
                 if path == "/preview":
                     return self.reply(200, operations.preview(service.store.get_run(body.get("run_id")), body.get("required_ids")))
+                if path == "/assignments":
+                    reviewers = {a["name"] for a in auth.accounts if a["role"] != "viewer"}
+                    return self.reply(200, operations.assign(service.store, text(body.get("run_id"), "run_id", 120), body, actor, reviewers))
                 if path in ("/decisions", "/notes", "/corrections"):
                     action = {"/decisions": operations.review, "/notes": operations.note, "/corrections": operations.correct}[path]
                     return self.reply(200, action(service.store, text(body.get("run_id"), "run_id", 120), body, actor))
@@ -203,6 +215,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     queue.cancel(text(body.get("id"), "job id", 120), actor)
                     return self.reply(200, {"cancelled": True})
                 self.reply(404, {"error": "not_found"})
+            except DatabaseUnavailable:
+                self.reply(503, {"error": "database_unavailable"})
             except ConflictError as exc:
                 self.reply(409, {"error": str(exc)})
             except KeyError:
@@ -222,12 +236,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
             super().server_close()
             self.instance_lock.close()
 
-    instance_lock = open(str(service.store.path) + ".lock", "a")
-    try:
-        fcntl.flock(instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        instance_lock.close()
-        raise ValueError("Another server already uses this database") from None
+    instance_lock = service.store.acquire_instance()
     try:
         server = Server((host, port), Handler, bind_and_activate=False)
         server.instance_lock = instance_lock
@@ -237,15 +246,19 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
         instance_lock.close()
         raise
     server.queue = queue
-    queue.start()
+    try:
+        queue.start()
+    except Exception:
+        server.server_close()
+        raise
     return server
 
 
 def main():
     parser = argparse.ArgumentParser(description="Recruiter workspace")
-    parser.add_argument("--provider", choices=["demo", "openai"], default="demo")
+    parser.add_argument("--provider", choices=["demo", "openai"], default=os.getenv("SCREENING_PROVIDER", "demo"))
     parser.add_argument("--db", default="data/screening.sqlite3")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")))
     parser.add_argument("--host", choices=["127.0.0.1", "0.0.0.0"], default="127.0.0.1")
     args = parser.parse_args()
     from .maintenance import Maintenance
@@ -253,12 +266,16 @@ def main():
         provider = DemoProvider() if args.provider == "demo" else OpenAIProvider()
         accounts = json.loads(os.environ["SCREENING_ACCOUNTS"]) if os.getenv("SCREENING_ACCOUNTS") else None
         config = config_from_env()
-        service = ScreeningService(Store(args.db), provider)
+        config["public_url"] = os.getenv("SCREENING_PUBLIC_URL")
+        service = ScreeningService(Store(os.getenv("DATABASE_URL") or args.db), provider)
         server = make_server(service, os.getenv("SCREENING_API_TOKEN"), args.port, accounts, config, args.host)
         maintenance = Maintenance(server, config)
         maintenance.start()
-    except ValueError as exc:
+    except (ValueError, DatabaseUnavailable) as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
+    def stop_signal(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop_signal)
     print(f"Recruiter workspace: http://127.0.0.1:{args.port} (provider={provider.name})", flush=True)
     try:
         server.serve_forever()

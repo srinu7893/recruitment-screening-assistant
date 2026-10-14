@@ -5,6 +5,8 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       SCREENING_API_TOKEN: ${SCREENING_API_TOKEN:?Set a strong workspace token}
+      DATABASE_URL: ${DATABASE_URL:-}
+      SCREENING_PUBLIC_URL: ${SCREENING_PUBLIC_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-}
       SCREENING_ACCOUNTS: ${SCREENING_ACCOUNTS:-}

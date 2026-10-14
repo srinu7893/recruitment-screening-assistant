@@ -1,5 +1,9 @@
 # Deployment and operations
 
+## Neon and public HTTPS
+
+See [NEON_DEPLOYMENT.md](NEON_DEPLOYMENT.md) for the supported single-instance cloud recipe, data persistence, migration and rollout limits. Set `DATABASE_URL` for PostgreSQL and `SCREENING_PUBLIC_URL` for an explicit public HTTPS origin. `/readyz` exposes status only.
+
 ## Local MVP
 
 Use the README setup on Linux. The parser uses POSIX resource limits and process groups. The application server defaults to loopback and is intended for local development/pilot operation. Keep candidate records and credentials out of Git. The default data directory and new SQLite file are created with private OS permissions.
@@ -27,7 +31,7 @@ Admin: roles, ingestion, reviews, integrations, deletion, retention and audit. R
 | SCREENING_API_TOKEN | Simple admin token |
 | SCREENING_ACCOUNTS | Optional account array; takes precedence over simple token |
 | OPENAI_API_KEY / OPENAI_MODEL | Required only for live provider |
-| SCREENING_PROVIDER | Compose provider choice, default demo; CLI uses --provider |
+| SCREENING_PROVIDER | Provider choice, default demo; --provider overrides it |
 | SCREENING_ALLOWED_HOSTS | Comma-separated exact public hostnames; empty blocks URL/feed import |
 | SCREENING_WEBHOOK_SECRET | HMAC secret for incoming profile batches |
 | SCREENING_CONNECTOR_URL | Fixed HTTPS JSON feed URL |
@@ -50,6 +54,6 @@ To restore: stop the server, retain a copy of the current database, copy a verif
 
 ## Before production rollout
 
-Configure TLS/reverse-proxy host/origin policy, managed identity/SSO, encrypted disk and backups, retention policy, secret management, monitoring, malware scanning, model data-handling review and a recruiter-led quality pilot. Current Host/Origin checks deliberately accept only localhost/127.0.0.1 on the bound port; adapting them for a public deployment requires explicit configuration and testing, not disabling the checks.
+Configure TLS/reverse-proxy host/origin policy, managed identity/SSO, encrypted disk and backups, retention policy, secret management, monitoring, malware scanning, model data-handling review and a recruiter-led quality pilot. Host/Origin checks accept localhost/127.0.0.1 on the bound port and the explicitly configured SCREENING_PUBLIC_URL HTTPS origin. Forwarded headers cannot expand this allowlist.
 
-The current single worker and SQLite are suitable for an MVP. Large-volume deployments need a durable worker platform, database service, bounded retry strategy, per-organization authorization and resource monitoring. Actual provider billing is not measured by this MVP; no savings or accuracy numbers are invented.
+SQLite remains available locally; Neon/PostgreSQL is supported for persistent cloud records with one active worker. Large-volume deployments need a durable worker platform, database service, bounded retry strategy, per-organization authorization and resource monitoring. Actual provider billing is not measured by this MVP; no savings or accuracy numbers are invented.
