@@ -83,7 +83,7 @@ const assert = require('node:assert/strict');
     await page.setViewportSize({width:1440,height:1000});
     await page.click('#load-showcase');
     await page.waitForFunction(() => document.querySelectorAll('#run-rows tr').length === 8);
-    assert.equal(await page.getByText('PS-101 · Payments L2 specialist', {exact:true}).count(), 1);
+    assert.equal(await page.locator('#run-rows').getByText('PS-101 · Payments L2 specialist', {exact:true}).count(), 1);
     await page.click('[data-tab="insights"]');
     await page.locator('#gap-chart .distribution-row').first().waitFor();
     await page.screenshot({path:'test-results/production-support-insights.png',fullPage:true});
