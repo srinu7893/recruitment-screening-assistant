@@ -65,5 +65,18 @@ External acceptance gates above remain unchanged.
 - [x] Reviewer assignment, priority, UTC due dates, overdue/mine filters and team workload.
 - [x] Dedicated PostgreSQL CI service and regression tests; deployment recipe with maintenance window.
 - [ ] Live Neon credentials/host connection and restart smoke test.
-- [ ] Zero-downtime Cloud Run rollout with leased workers (current recipe is single-instance stop/start).
-- [ ] SSO/MFA, tenant isolation, production document scanning and live-model pilot.
+- [x] Cloud Run overlapping-revision implementation with elected PostgreSQL worker and fenced writes; live rollout verification still pending.
+- [x] Verified Google IAP SSO implementation and identity tests.
+- [ ] Live IAP/MFA policy, tenant isolation, production document scanning and live-model pilot.
+
+## Cloud workspace phase
+
+- [x] Cloud Run refuses ephemeral SQLite; PostgreSQL remains the source of truth.
+- [x] Leader/standby workers, takeover recovery and interrupted-call fencing.
+- [x] Manual deployment workflow with WIF, pinned Secret Manager versions and immutable images.
+- [x] Google IAP signature/issuer/audience/expiry validation and approved subject-role mapping.
+- [x] Visual command center, review board, intake trends, source channels and runtime status.
+- [x] Cloud-hosted model-evaluation workflow and fictional regression report.
+- [ ] Provision actual cloud resources and validate the deployed URL with real identity and Neon credentials.
+
+These code-completion marks do not mean that live deployment, ATS access, model quality or security certification has been completed.

@@ -10,7 +10,9 @@ In the running demo application, admins can click **Load production-support show
 
 ## Cloud deployment and persistent data
 
-The full app needs a Python/container host; GitHub Pages supports only the offline showcase. [Neon deployment guide](docs/NEON_DEPLOYMENT.md) covers PostgreSQL, verified TLS, public HTTPS configuration, health checks and migration from SQLite. Use `compose.neon.yaml` on a single container host with a stop-before-start deployment. Standard Cloud Run rolling deployment remains a separate worker-architecture task.
+The browser-only cloud path is **Cloud Run + Neon + Google IAP**. Follow the [cloud setup guide](docs/CLOUD_WORKSPACE.md), then use the manual **Deploy recruitment cloud** GitHub Actions workflow. PostgreSQL worker leadership supports overlapping revisions, and Cloud Run refuses ephemeral SQLite storage. The [Neon guide](docs/NEON_DEPLOYMENT.md) also covers migration and an optional container-host setup.
+
+The **Command center** adds a review board, weekly intake chart, source channels, overdue alerts and runtime status. Google IAP sign-in uses verified identity assertions and explicit team roles. A separate GitHub Actions workflow evaluates a live model on fictional regression scenarios.
 
 Reviewer assignments now include priority, due dates, assigned-to-me/overdue filters and team workload analytics. These organize review work without changing candidate assessments.
 
@@ -80,4 +82,4 @@ CI runs backend/document tests, real-browser acceptance and a container build. S
 
 ## Scope and current limits
 
-This is a local, single-organization MVP, not a certified production hiring system. A quote match validates provenance, not whether an interpretation is correct. Live-model quality evaluation and real ATS-account verification remain external acceptance gates. The generic feed/webhook contracts need mapping for each ATS; arbitrary platforms are not automatically supported. SSO, tenant isolation, production TLS, encrypted storage deployment and independent security review remain production work. No external messages or ATS hiring-state changes are sent.
+This is a single-organization application with a tested cloud deployment implementation; live infrastructure provisioning and a production hiring pilot remain external gates. A quote match validates provenance, not whether an interpretation is correct. Live-model quality evaluation and real ATS-account verification remain external acceptance gates. The generic feed/webhook contracts need mapping for each ATS; arbitrary platforms are not automatically supported. Google IAP SSO is implemented; its live configuration, tenant isolation, production malware scanning, backup/restore validation and independent security review remain production work. No external messages or ATS hiring-state changes are sent.

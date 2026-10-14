@@ -28,24 +28,31 @@ class Maintenance:
         last_sync = 0
         last_retention = 0
         while not self.stop.is_set():
+            queue = self.server.queue
+            if queue.store.backend == 'postgresql':
+                if not queue.leader or not queue.worker:
+                    self.stop.wait(1)
+                    continue
+                queue = queue.worker
             current = time.monotonic()
             interval = self.config.get("sync_seconds", 0)
             if interval and current - last_sync >= interval:
                 last_sync = current
                 try:
-                    result = sync_feed(self.server.queue, self.config, "scheduled-sync")
+                    result = sync_feed(queue, self.config, "scheduled-sync")
                     self.server.last_sync = {"at": now(), "jobs": len(result["jobs"]), "errors": len(result["errors"])}
                 except Exception:
                     self.server.last_sync = {"at": now(), "error": "sync_failed"}
             if self.config.get("retention_days") and current - last_retention >= 3600:
                 last_retention = current
                 try:
-                    expire(self.server.queue.store, self.config["retention_days"], "retention-policy")
+                    expire(queue.store, self.config["retention_days"], "retention-policy")
                 except Exception:
-                    self.server.queue.store.audit("retention-policy", "retention_failed", "system")
+                    # Database failures must not kill the scheduler thread.
+                    self.server.last_retention_error = "retention_failed"
             self.stop.wait(1)
 
     def close(self):
         self.stop.set()
         if self.thread:
-            self.thread.join(timeout=25)
+            self.thread.join(timeout=1)

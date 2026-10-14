@@ -10,7 +10,8 @@ from threading import BoundedSemaphore
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
-from .auth import Auth, RateLimit, config_from_env
+from .auth import RateLimit, config_from_env
+from .identity import configured_auth
 from .contracts import text
 from .documents import extract_upload
 from .integrations import (read_url, csv_records, import_records, sync_feed,
@@ -28,7 +29,7 @@ STATIC = Path(__file__).with_name("static")
 
 
 def make_server(service, token=None, port=8000, accounts=None, config=None, host="127.0.0.1"):
-    auth = Auth(token, accounts)
+    auth = configured_auth(token, accounts)
     config = config or {"allowed_hosts": set()}
     external = public_origin(config.get("public_url"))
     limiter = RateLimit()
@@ -82,9 +83,11 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                 url = urlsplit(self.path)
                 query = parse_qs(url.query)
                 path = url.path
+                if self.command == "GET" and path == "/auth/config":
+                    return self.reply(200, {"mode": auth.mode})
                 if self.command == "GET" and path == "/readyz":
                     try:
-                        ready = service.store.ready() and queue.thread is not None and queue.thread.is_alive() and not queue.last_error
+                        ready = service.store.ready() and queue.thread is not None and queue.thread.is_alive() and not queue.stop.is_set()
                     except Exception:
                         ready = False
                     return self.reply(200 if ready else 503, {"status": "ready" if ready else "unavailable"})
@@ -104,7 +107,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     if not result["errors"]:
                         claim_webhook(service.store, event_id)
                     return self.reply(202, result)
-                identity = auth.identify(self.headers.get("Authorization", ""))
+                identity = (auth.identify_assertion(self.headers.get("X-Goog-IAP-JWT-Assertion", ""))
+                            if auth.mode == 'iap' else auth.identify(self.headers.get("Authorization", "")))
                 if not identity:
                     return self.reply(401, {"error": "unauthorized"})
                 actor = identity["name"]
@@ -113,8 +117,9 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                 if self.command == "GET":
                     if path == "/health":
                         return self.reply(200, {"status": "ok", "provider": service.provider.name,
-                                               "identity": identity, "demo": service.provider.name == "demo",
-                                               "database": service.store.backend})
+                                               "identity": identity, "auth_mode": auth.mode, "demo": service.provider.name == "demo",
+                                               "database": service.store.backend, "worker": "leader" if queue.leader else "standby",
+                                               "worker_error": queue.last_error})
                     if path == "/reviewers":
                         return self.reply(200, [{"name": a["name"], "role": a["role"]} for a in auth.accounts if a["role"] != "viewer"])
                     if path == "/roles":
@@ -234,16 +239,18 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
         def server_close(self):
             queue.close()
             super().server_close()
-            self.instance_lock.close()
+            if self.instance_lock:
+                self.instance_lock.close()
 
-    instance_lock = service.store.acquire_instance()
+    instance_lock = service.store.acquire_instance() if service.store.backend == "sqlite" else None
     try:
         server = Server((host, port), Handler, bind_and_activate=False)
         server.instance_lock = instance_lock
         server.server_bind()
         server.server_activate()
     except Exception:
-        instance_lock.close()
+        if instance_lock:
+            instance_lock.close()
         raise
     server.queue = queue
     try:
@@ -267,7 +274,10 @@ def main():
         accounts = json.loads(os.environ["SCREENING_ACCOUNTS"]) if os.getenv("SCREENING_ACCOUNTS") else None
         config = config_from_env()
         config["public_url"] = os.getenv("SCREENING_PUBLIC_URL")
-        service = ScreeningService(Store(os.getenv("DATABASE_URL") or args.db), provider)
+        database_url = os.getenv("DATABASE_URL")
+        if os.getenv("K_SERVICE") and (not database_url or not database_url.startswith(("postgres://", "postgresql://"))):
+            raise ValueError("Cloud Run requires a PostgreSQL DATABASE_URL; ephemeral SQLite is disabled")
+        service = ScreeningService(Store(database_url or args.db), provider)
         server = make_server(service, os.getenv("SCREENING_API_TOKEN"), args.port, accounts, config, args.host)
         maintenance = Maintenance(server, config)
         maintenance.start()

@@ -1,0 +1,31 @@
+name: Evaluate live screening model
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Configured OpenAI model ID to evaluate on six fictional scenarios
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: recruitment-evaluation
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Run fictional regression corpus
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ inputs.model }}
+        run: python -m screening.evaluation --provider openai
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-evaluation
+          path: artifacts/evaluation/
