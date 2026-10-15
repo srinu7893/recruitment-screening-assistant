@@ -23,6 +23,8 @@ def validate(c, require_scanner=True):
         raise ValueError('Provider must be demo or openai')
     if (require_scanner or c.get('scanner_image')) and not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]+@sha256:[a-f0-9]{64}', c.get('scanner_image','')):
         raise ValueError('Provide an immutable scanner image digest')
+    if not isinstance(c.get('greenhouse_attachment_hosts',''), str) or any(ch in c.get('greenhouse_attachment_hosts','') for ch in '\r\n'):
+        raise ValueError('Greenhouse attachment hosts must be a comma-separated string')
     required = {'DATABASE_URL','SCREENING_IAP_ACCOUNTS'}
     if c['provider']=='openai':
         required.add('OPENAI_API_KEY')

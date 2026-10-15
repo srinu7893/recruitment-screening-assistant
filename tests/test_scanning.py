@@ -36,6 +36,15 @@ class ScanningTests(unittest.TestCase):
                 extract_upload('resume.txt',base64.b64encode(b'resume').decode())
             parser.assert_not_called()
 
+    def test_fresh_signature_version_is_accepted(self):
+        from datetime import datetime, timezone
+        from screening.scanning import check_signatures
+        connection=MagicMock();connection.__enter__.return_value=connection
+        stamp=datetime.now(timezone.utc).strftime('%a %b %d %H:%M:%S %Y')
+        connection.recv.return_value=('ClamAV 1.4/12345/'+stamp+'\0').encode()
+        with patch('screening.scanning.socket.create_connection',return_value=connection):
+            check_signatures()
+
     def test_unknown_or_stale_signatures_block(self):
         from screening.scanning import check_signatures
         connection=MagicMock();connection.__enter__.return_value=connection
@@ -55,7 +64,7 @@ class RealScannerTests(unittest.TestCase):
             marker=b'RECRUITMENT_BENIGN_SCANNER_TEST_MARKER_12345'
             (root/'test.ndb').write_text('RecruitmentTest:0:*:'+marker.hex()+'\n')
             config=root/'clamd.conf'
-            config.write_text('TCPSocket 3310\nTCPAddr 127.0.0.1\nDatabaseDirectory '+directory+'\nForeground yes\n')
+            config.write_text(Path('deploy/scanner/clamd.conf').read_text().replace('/var/lib/clamav',directory).replace('TCPAddr 0.0.0.0','TCPAddr 127.0.0.1'))
             proc=subprocess.Popen(['/usr/sbin/clamd','--config-file='+str(config),'--foreground=true'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
             try:
                 for _ in range(100):
