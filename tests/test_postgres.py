@@ -30,6 +30,10 @@ class PostgreSQLTests(unittest.TestCase):
         self.assertEqual(keys, seed(Store(self.url))['run_ids'])
         run = operations.note(self.store, keys[0], {'revision':0,'text':'Verify Linux example'}, 'reviewer')
         self.assertEqual(Store(self.url).get_run(keys[0])['notes'], run['notes'])
+        card=operations.scorecard(self.store,keys[0],{'revision':run['revision'],'stage':'Support scenario',
+            'observations':[{'criterion_id':run['role_snapshot']['criteria'][0]['id'],
+            'rating':'needs_follow_up','notes':'Ask for the specific incident resolution.'}]},'interviewer')
+        self.assertEqual(Store(self.url).get_run(keys[0])['scorecards'],card['scorecards'])
         self.assertEqual(len(operations.compare(self.store, keys[:2])['candidates']), 2)
         self.store.delete_run(keys[0], 'admin')
         self.assertEqual(len(Store(self.url).list_runs()), 5)

@@ -66,6 +66,11 @@ class AccessTests(unittest.TestCase):
         self.assertNotIn(b'hash', raw)
         self.assertEqual(self.call('/assignments', {}, 'viewer')[0], 403)
 
+    def test_scorecard_and_ats_permissions(self):
+        self.assertEqual(self.call('/scorecards',{},'viewer')[0],403)
+        self.assertEqual(self.call('/integrations/greenhouse',{},'reviewer')[0],403)
+        self.assertEqual(self.call('/integrations/greenhouse',{},'viewer')[0],403)
+
     def test_viewer_cannot_submit(self):
         self.assertEqual(self.call('/jobs',{},'viewer')[0],403)
 

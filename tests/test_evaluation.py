@@ -16,4 +16,7 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result['valid_outputs'],5)
         self.assertEqual(result['criteria_compared'],35)
         self.assertEqual(result['criterion_agreement'],1)
+        self.assertEqual(result['invalid_outputs'],1)
+        self.assertEqual(result['routing_agreement'],1)
+        self.assertEqual(sum(result['status_confusion'].values()),35)
         self.assertNotIn('private provider detail',str(result))

@@ -100,3 +100,9 @@ Identical repeated request IDs return the existing job, including failure/cancel
 - `/runs` rows include assignment; metrics include workload by reviewer, unassigned and overdue counts for awaiting-review records.
 - `GET /readyz`: public status-only 200/503 readiness; Host/Origin validation still applies.
 - `/health`: authenticated response now includes database type (never connection credentials).
+
+### Interview evidence and Greenhouse
+
+`POST /scorecards` (reviewer/admin): `{run_id, revision, stage, observations:[{criterion_id,rating,notes}]}`. Ratings: `not_observed`, `needs_follow_up`, `demonstrated`. Requires nonempty notes and known unique role criteria. Appends attributed evidence and reopens human review. Viewer access is read-only via the existing run/export responses.
+
+`POST /integrations/greenhouse` (admin): `{candidate_id:123,attachment_id:456,role_version:"approved:v1"}`. Imports one verified resume through the scan/extraction gate. Returns jobs, errors, extraction warnings and scan verdict. Configure OAuth secrets and exact attachment hosts first; see `ADVANCED_WORKFLOWS.md`.

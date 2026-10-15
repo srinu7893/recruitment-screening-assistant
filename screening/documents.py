@@ -8,6 +8,8 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
+from .scanning import scan_upload
+
 MAX_FILE = 5 * 1024 * 1024
 
 
@@ -29,6 +31,7 @@ def extract_upload(filename, encoded):
         raise ValueError("PDF signature does not match")
     if suffix == ".docx" and not raw.startswith(b"PK"):
         raise ValueError("DOCX signature does not match")
+    scan = scan_upload(raw)
     with TemporaryDirectory() as directory:
         path = Path(directory) / ("input" + suffix)
         path.write_bytes(raw)
@@ -45,4 +48,7 @@ def extract_upload(filename, encoded):
     result = json.loads(stdout)
     if result.get("error"):
         raise ValueError(result["error"])
+    result["malware_scan"] = scan
+    if scan["status"] == "not_scanned":
+        result.setdefault("warnings", []).append("Malware scanning disabled in this development environment.")
     return result

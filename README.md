@@ -83,3 +83,7 @@ CI runs backend/document tests, real-browser acceptance and a container build. S
 ## Scope and current limits
 
 This is a single-organization application with a tested cloud deployment implementation; live infrastructure provisioning and a production hiring pilot remain external gates. A quote match validates provenance, not whether an interpretation is correct. Live-model quality evaluation and real ATS-account verification remain external acceptance gates. The generic feed/webhook contracts need mapping for each ATS; arbitrary platforms are not automatically supported. Google IAP SSO is implemented; its live configuration, tenant isolation, production malware scanning, backup/restore validation and independent security review remain production work. No external messages or ATS hiring-state changes are sent.
+
+### Advanced ingestion and interview review
+
+Greenhouse Harvest v3 selected-resume imports, a cloud ClamAV sidecar with fail-closed uploads, structured interview scorecards, and per-criterion evaluation diagnostics are implemented. The deployment workflow builds both cloud images. See [setup and live acceptance checks](docs/ADVANCED_WORKFLOWS.md). Live ATS credentials, cloud scanner operation and recruiter model validation must still be verified in your environment.

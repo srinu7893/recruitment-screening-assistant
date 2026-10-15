@@ -9,7 +9,14 @@
   "iap_audience": "/projects/123456789012/locations/asia-south1/services/recruitment-screening",
   "provider": "demo",
   "secrets": {
-    "DATABASE_URL": {"name": "recruitment-neon-url", "version": "1"},
-    "SCREENING_IAP_ACCOUNTS": {"name": "recruitment-iap-accounts", "version": "1"}
-  }
+    "DATABASE_URL": {
+      "name": "recruitment-neon-url",
+      "version": "1"
+    },
+    "SCREENING_IAP_ACCOUNTS": {
+      "name": "recruitment-iap-accounts",
+      "version": "1"
+    }
+  },
+  "greenhouse_attachment_hosts": ""
 }
