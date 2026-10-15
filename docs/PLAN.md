@@ -80,3 +80,16 @@ External acceptance gates above remain unchanged.
 - [ ] Provision actual cloud resources and validate the deployed URL with real identity and Neon credentials.
 
 These code-completion marks do not mean that live deployment, ATS access, model quality or security certification has been completed.
+
+## Advanced review and ingestion phase
+
+- [x] Read-only Greenhouse Harvest v3 selected-resume OAuth adapter with candidate association checks and safe downloads.
+- [x] Fail-closed ClamAV scan gate, signature-age checks, cloud sidecar image and deployment wiring.
+- [x] Structured interview evidence with role-linked criteria, author history and decision reopening.
+- [x] Per-criterion model diagnostics, status confusion counts, routing agreement and human review rubric.
+- [x] URL imports share the bounded parser capacity with manual/ATS uploads.
+- [ ] Verify real Greenhouse account permissions, attachment hosts and authorized sample import.
+- [ ] Verify cloud scanner startup, signature updates and blocked-file smoke tests.
+- [ ] Complete representative recruiter-labeled live-model pilot and agree release thresholds.
+
+See `ADVANCED_WORKFLOWS.md` for setup and acceptance boundaries. Multilingual OCR, high-volume ATS crawling and multi-tenant authorization are future scope; each deployment continues to serve one organization.

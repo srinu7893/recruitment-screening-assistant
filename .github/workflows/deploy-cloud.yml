@@ -35,7 +35,7 @@ jobs:
           import json,os
           from pathlib import Path
           from scripts.cloud_release import validate
-          c=validate(json.loads(os.environ['CLOUD_CONFIG']))
+          c=validate(json.loads(os.environ['CLOUD_CONFIG']), require_scanner=False)
           Path('cloud-config.json').write_text(json.dumps(c))
           with open(os.environ['GITHUB_ENV'],'a') as f:
               f.write('REGISTRY='+c['region']+'-docker.pkg.dev\n')
@@ -58,6 +58,22 @@ jobs:
           digest=$(gcloud artifacts docker images describe "$image" --project="$CLOUD_PROJECT" --format='value(image_summary.digest)')
           [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
           printf 'RELEASE_IMAGE=%s@%s\n' "$IMAGE_BASE" "$digest" >> "$GITHUB_ENV"
+      - name: Build and publish scanner sidecar
+        run: |
+          set -euo pipefail
+          scanner_base="${IMAGE_BASE%/recruitment}/scanner"
+          scanner_image="$scanner_base:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker build -t "$scanner_image" deploy/scanner
+          docker push "$scanner_image"
+          scanner_digest=$(gcloud artifacts docker images describe "$scanner_image" --project="$CLOUD_PROJECT" --format='value(image_summary.digest)')
+          [[ "$scanner_digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          export SCANNER_IMAGE="$scanner_base@$scanner_digest"
+          python - <<'PYCODE'
+          import json,os
+          from pathlib import Path
+          p=Path('cloud-config.json');c=json.loads(p.read_text())
+          c['scanner_image']=os.environ['SCANNER_IMAGE'];p.write_text(json.dumps(c))
+          PYCODE
       - name: Deploy protected cloud workspace
         run: python -m scripts.cloud_release deploy --config cloud-config.json --image "$RELEASE_IMAGE" --revision "$REVISION"
       - uses: actions/upload-artifact@v4

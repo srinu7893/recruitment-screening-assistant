@@ -10,6 +10,7 @@ from threading import BoundedSemaphore
 from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
+from .greenhouse import import_resume
 from .auth import RateLimit, config_from_env
 from .identity import configured_auth
 from .contracts import text
@@ -138,6 +139,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                         return self.reply(200, service.store.audits())
                     if path == "/integrations":
                         return self.reply(200, {"allowed_hosts": sorted(config["allowed_hosts"]),
+                            "greenhouse_configured": bool(os.environ.get("GREENHOUSE_CLIENT_ID") and os.environ.get("GREENHOUSE_CLIENT_SECRET")),
+                            "scan_mode": os.environ.get("SCREENING_SCAN_MODE", "clamd" if os.environ.get("K_SERVICE") else "off"),
                             "webhook_configured": bool(config.get("webhook_secret")),
                             "feed_configured": bool(config.get("connector_url")),
                             "sync_seconds": config.get("sync_seconds", 0),
@@ -147,7 +150,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     return self.reply(405, {"error": "method_not_allowed"})
                 if identity["role"] == "viewer":
                     return self.reply(403, {"error": "read_only_account"})
-                admin_paths = {"/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
+                admin_paths = {"/integrations/greenhouse", "/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
                 if path in admin_paths and identity["role"] != "admin":
                     return self.reply(403, {"error": "admin_required"})
                 _, body = self.read_body()
@@ -174,16 +177,28 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                         parsing.release()
                     request = {"request_id": body.get("request_id"), "role_version": body.get("role_version"), "profile_text": extracted["text"]}
                     metadata = {"kind": "upload", "filename": Path(body["filename"]).name,
-                                "pages": extracted["pages"], "warnings": extracted["warnings"]}
+                                "pages": extracted["pages"], "warnings": extracted["warnings"], "malware_scan": extracted.get("malware_scan")}
                     return self.reply(202, queue.submit(request, metadata, actor))
                 if path == "/imports/url":
-                    extracted = read_url(body.get("url"), config["allowed_hosts"])
+                    if not parsing.acquire(blocking=False):
+                        return self.reply(429, {"error": "parser_busy_try_again"})
+                    try:
+                        extracted = read_url(body.get("url"), config["allowed_hosts"])
+                    finally:
+                        parsing.release()
                     request = {"request_id": body.get("request_id"), "role_version": body.get("role_version"), "profile_text": extracted["text"]}
                     parts = urlsplit(body["url"])
                     return self.reply(202, queue.submit(request, {"kind": "url", "host": parts.hostname,
                                                                   "warnings": extracted["warnings"]}, actor))
                 if path == "/imports/csv":
                     return self.reply(202, import_records(queue, csv_records(body.get("csv")), body.get("role_version"), actor))
+                if path == "/integrations/greenhouse":
+                    if not parsing.acquire(blocking=False):
+                        return self.reply(429, {"error": "parser_busy_try_again"})
+                    try:
+                        return self.reply(202, import_resume(queue, body, actor))
+                    finally:
+                        parsing.release()
                 if path == "/integrations/sync":
                     result = sync_feed(queue, config, actor)
                     self.server.last_sync = {"at": operations.now(), "jobs": len(result["jobs"]), "errors": len(result["errors"])}
@@ -208,8 +223,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                 if path == "/assignments":
                     reviewers = {a["name"] for a in auth.accounts if a["role"] != "viewer"}
                     return self.reply(200, operations.assign(service.store, text(body.get("run_id"), "run_id", 120), body, actor, reviewers))
-                if path in ("/decisions", "/notes", "/corrections"):
-                    action = {"/decisions": operations.review, "/notes": operations.note, "/corrections": operations.correct}[path]
+                if path in ("/decisions", "/notes", "/corrections", "/scorecards"):
+                    action = {"/scorecards": operations.scorecard, "/decisions": operations.review, "/notes": operations.note, "/corrections": operations.correct}[path]
                     return self.reply(200, action(service.store, text(body.get("run_id"), "run_id", 120), body, actor))
                 if path == "/delete":
                     service.store.delete_run(text(body.get("run_id"), "run_id", 120), actor)

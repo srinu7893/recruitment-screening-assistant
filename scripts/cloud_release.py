@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 
-def validate(c):
+def validate(c, require_scanner=True):
     for key in ('project','region','service','repository'):
         if not re.fullmatch(r'[a-z][a-z0-9-]{1,62}', c.get(key,'')) or 'replace' in c[key]:
             raise ValueError('Invalid or placeholder ' + key)
@@ -21,13 +21,15 @@ def validate(c):
         raise ValueError('Set the exact IAP audience for this project')
     if c.get('provider') not in ('demo','openai'):
         raise ValueError('Provider must be demo or openai')
+    if (require_scanner or c.get('scanner_image')) and not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]+@sha256:[a-f0-9]{64}', c.get('scanner_image','')):
+        raise ValueError('Provide an immutable scanner image digest')
     required = {'DATABASE_URL','SCREENING_IAP_ACCOUNTS'}
     if c['provider']=='openai':
         required.add('OPENAI_API_KEY')
         if not isinstance(c.get('model'),str) or not c['model'].strip():
             raise ValueError('Live provider requires model')
     secrets = c.get('secrets',{})
-    allowed = required | {'SCREENING_WEBHOOK_SECRET','SCREENING_CONNECTOR_TOKEN'}
+    allowed = required | {'SCREENING_WEBHOOK_SECRET','SCREENING_CONNECTOR_TOKEN','GREENHOUSE_CLIENT_ID','GREENHOUSE_CLIENT_SECRET'}
     if not required.issubset(secrets) or set(secrets)-allowed:
         raise ValueError('Missing or unsupported secret references')
     for secret in secrets.values():
@@ -45,7 +47,7 @@ def manifest(c, image, revision, current=None):
     if not re.fullmatch(re.escape(c['service'])+r'-[a-z0-9-]{1,40}',revision) or len(revision)>63:
         raise ValueError('Invalid revision name')
     env={'SCREENING_PUBLIC_URL':c['public_url'],'SCREENING_AUTH_MODE':'iap',
-         'SCREENING_IAP_AUDIENCE':c['iap_audience'],'SCREENING_PROVIDER':c['provider']}
+         'SCREENING_SCAN_MODE':'clamd','GREENHOUSE_ATTACHMENT_HOSTS':c.get('greenhouse_attachment_hosts',''),'SCREENING_IAP_AUDIENCE':c['iap_audience'],'SCREENING_PROVIDER':c['provider']}
     if c.get('model'):
         env['OPENAI_MODEL']=c['model']
     values=[{'name':k,'value':v} for k,v in env.items()]
@@ -71,10 +73,14 @@ def manifest(c, image, revision, current=None):
                     'annotations':{'run.googleapis.com/ingress':'all','run.googleapis.com/iap-enabled':'true',
                                    'run.googleapis.com/minScale':'1','run.googleapis.com/maxScale':'3'}},
         'spec':{'template':{'metadata':{'name':revision,'annotations':{'run.googleapis.com/cpu-throttling':'false',
-                                      'run.googleapis.com/execution-environment':'gen2'}},
+                                      'run.googleapis.com/execution-environment':'gen2',
+                                      'run.googleapis.com/container-dependencies':'{"web":["scanner"]}'}},
                             'spec':{'serviceAccountName':c['runtime_account'],'containerConcurrency':20,'timeoutSeconds':180,
-                              'containers':[{'image':image,'ports':[{'containerPort':8080}], 'env':values,
-                                'resources':{'limits':{'cpu':'1','memory':'1Gi'}},'startupProbe':probe}]}},'traffic':traffic}}
+                              'containers':[{'name':'web','image':image,'ports':[{'containerPort':8080}], 'env':values,
+                                'resources':{'limits':{'cpu':'1','memory':'1Gi'}},'startupProbe':probe},
+                                {'name':'scanner','image':c['scanner_image'],
+                                 'resources':{'limits':{'cpu':'1','memory':'3Gi'}},
+                                 'startupProbe':{'tcpSocket':{'port':3310},'periodSeconds':10,'failureThreshold':24}}]}},'traffic':traffic}}
 
 
 def command(args):

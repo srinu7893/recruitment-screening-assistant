@@ -221,3 +221,34 @@ def activity(rows):
             age = (current - datetime.fromisoformat(row['created_at'])).total_seconds() / 86400
             aging['under_1_day' if age < 1 else '1_to_3_days' if age <= 3 else 'over_3_days'] += 1
     return {'daily_intake': [{'date': k, 'count': v} for k, v in days.items()], 'review_aging': aging}
+
+
+def scorecard(store, run_id, body, actor):
+    """Human observations only, retained separately from resume assessments."""
+    stage = text(body.get('stage'), 'interview stage', 120)
+    observations = body.get('observations')
+    if not isinstance(observations, list) or not 1 <= len(observations) <= 25:
+        raise ValueError('Provide 1 to 25 criterion observations')
+    def change(run):
+        known = {c['id'] for c in run['role_snapshot']['criteria']}
+        seen = set()
+        checked = []
+        for row in observations:
+            if not isinstance(row, dict):
+                raise ValueError('Invalid observation')
+            key = row.get('criterion_id')
+            if not isinstance(key, str) or key not in known or key in seen:
+                raise ValueError('Unknown or duplicate criterion')
+            seen.add(key)
+            rating = row.get('rating')
+            if rating not in ('not_observed', 'needs_follow_up', 'demonstrated'):
+                raise ValueError('Invalid observation rating')
+            checked.append({'criterion_id': key, 'rating': rating,
+                            'notes': text(row.get('notes'), 'interview evidence notes', 2000)})
+        run.setdefault('scorecards', []).append({'stage': stage, 'observations': checked,
+            'actor': actor, 'at': now(), 'role_version': run['role_version']})
+        if run.get('decisions') and run['decisions'][-1]['decision'] != 'hold':
+            run['decisions'].append({'decision': 'hold', 'reason': 'Interview evidence added; review again.',
+                                     'actor': actor, 'at': now()})
+        run['status'] = 'awaiting_review'
+    return store.mutate_run(run_id, body.get('revision'), actor, 'interview_scorecard_added', change)

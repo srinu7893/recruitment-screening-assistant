@@ -31,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t recruitment-screening:test .
+      - run: docker build -t recruitment-scanner:test deploy/scanner
 
   postgres:
     runs-on: ubuntu-latest
@@ -55,3 +56,13 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements-dev.txt
       - run: python -m unittest discover -s tests -p test_postgres.py -v
+
+  scanner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: sudo apt-get update && sudo apt-get install -y clamav-daemon
+      - run: RUN_CLAMD_TEST=1 python -m unittest discover -s tests -p test_scanning.py -v

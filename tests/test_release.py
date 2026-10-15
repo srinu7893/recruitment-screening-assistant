@@ -8,7 +8,7 @@ class ReleaseTests(unittest.TestCase):
         self.config={'project':'screening-project','project_number':'123456789012','region':'asia-south1',
                      'service':'recruitment','repository':'recruitment','runtime_account':'runtime@screening-project.iam.gserviceaccount.com',
                      'public_url':'https://recruitment.example.run.app','iap_audience':'/projects/123456789012/locations/asia-south1/services/recruitment',
-                     'provider':'demo','secrets':{'DATABASE_URL':{'name':'neon-url','version':'1'},'SCREENING_IAP_ACCOUNTS':{'name':'iap-accounts','version':'1'}}}
+                     'provider':'demo','scanner_image':'registry.example/scanner@sha256:'+'b'*64,'secrets':{'DATABASE_URL':{'name':'neon-url','version':'1'},'SCREENING_IAP_ACCOUNTS':{'name':'iap-accounts','version':'1'}}}
         self.image='asia-south1-docker.pkg.dev/screening-project/recruitment/recruitment@sha256:'+'a'*64
 
     def test_cloud_manifest_enforces_identity_cpu_and_secrets(self):

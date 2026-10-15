@@ -36,6 +36,21 @@ class ProductTests(unittest.TestCase):
         self.service.create_role(self.role)
         self.queue = Queue(self.service)
 
+    def test_scorecard_preserves_assessment_reopens_review_and_checks_revision(self):
+        run = self.service.screen(self.request)
+        decided = operations.review(self.store, run['run_id'], {'revision':0,'decision':'advance','reason':'Evidence reviewed'}, 'recruiter')
+        body={'revision':decided['revision'],'stage':'Technical interview','observations':[
+            {'criterion_id':self.role['criteria'][0]['id'],'rating':'demonstrated','notes':'Explained personal API contribution with an incident example.'}]}
+        updated=operations.scorecard(self.store,run['run_id'],body,'interviewer')
+        self.assertEqual(updated['result'],run['result'])
+        self.assertEqual(updated['status'],'awaiting_review')
+        self.assertEqual(updated['decisions'][-1]['decision'],'hold')
+        self.assertEqual(updated['scorecards'][0]['actor'],'interviewer')
+        with self.assertRaises(ConflictError):operations.scorecard(self.store,run['run_id'],body,'other')
+        body['revision']=updated['revision'];body['observations'][0]['criterion_id']='unknown'
+        with self.assertRaises(ValueError):operations.scorecard(self.store,run['run_id'],body,'other')
+        self.assertEqual(len(self.store.get_run(run['run_id'])['scorecards']),1)
+
     def test_queue_is_durable_and_processes_once(self):
         self.queue.submit(self.request)
         another = Queue(ScreeningService(Store(self.store.path), self.service.provider))
