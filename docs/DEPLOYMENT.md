@@ -2,7 +2,7 @@
 
 ## Neon and public HTTPS
 
-See [NEON_DEPLOYMENT.md](NEON_DEPLOYMENT.md) for the supported single-instance cloud recipe, data persistence, migration and rollout limits. Set `DATABASE_URL` for PostgreSQL and `SCREENING_PUBLIC_URL` for an explicit public HTTPS origin. `/readyz` exposes status only.
+See [NEON_DEPLOYMENT.md](NEON_DEPLOYMENT.md) for PostgreSQL persistence and the optional container recipe; see [CLOUD_WORKSPACE.md](CLOUD_WORKSPACE.md) for Cloud Run/IAP, data persistence, migration and rollout limits. Set `DATABASE_URL` for PostgreSQL and `SCREENING_PUBLIC_URL` for an explicit public HTTPS origin. `/readyz` exposes status only.
 
 ## Local MVP
 
@@ -22,7 +22,7 @@ The simple setup uses SCREENING_API_TOKEN as the admin operator. For separate au
 ]
 ```
 
-Admin: roles, ingestion, reviews, integrations, deletion, retention and audit. Reviewer: ingestion, review, comparison and notes. Viewer: read-only records. All accounts belong to the same organization; do not share one instance among unrelated companies. Rotate tokens by changing the environment and restarting. SSO/MFA and per-job visibility are not implemented.
+Admin: roles, ingestion, reviews, integrations, deletion, retention and audit. Reviewer: ingestion, review, comparison and notes. Viewer: read-only records. All accounts belong to the same organization; do not share one instance among unrelated companies. Rotate tokens by changing the environment and restarting. Google IAP SSO is available for cloud deployments; MFA policy is managed by the identity provider. Per-job visibility is not implemented.
 
 ## Environment variables
 
@@ -56,4 +56,4 @@ To restore: stop the server, retain a copy of the current database, copy a verif
 
 Configure TLS/reverse-proxy host/origin policy, managed identity/SSO, encrypted disk and backups, retention policy, secret management, monitoring, malware scanning, model data-handling review and a recruiter-led quality pilot. Host/Origin checks accept localhost/127.0.0.1 on the bound port and the explicitly configured SCREENING_PUBLIC_URL HTTPS origin. Forwarded headers cannot expand this allowlist.
 
-SQLite remains available locally; Neon/PostgreSQL is supported for persistent cloud records with one active worker. Large-volume deployments need a durable worker platform, database service, bounded retry strategy, per-organization authorization and resource monitoring. Actual provider billing is not measured by this MVP; no savings or accuracy numbers are invented.
+SQLite remains available locally; Neon/PostgreSQL is supported for persistent cloud records with one elected active worker and overlapping web instances. Large-volume deployments need a durable worker platform, database service, bounded retry strategy, per-organization authorization and resource monitoring. Actual provider billing is not measured by this MVP; no savings or accuracy numbers are invented.

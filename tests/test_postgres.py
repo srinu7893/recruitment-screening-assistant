@@ -54,6 +54,82 @@ class PostgreSQLTests(unittest.TestCase):
         self.assertFalse(queue.process_one())
         self.assertEqual(Store(self.url).get_run('queued-test')['status'], 'awaiting_review')
 
+    def wait_for(self, predicate, timeout=12):
+        import time
+        deadline = time.monotonic()+timeout
+        while time.monotonic()<deadline:
+            if predicate():
+                return
+            time.sleep(.05)
+        self.fail('Timed out waiting for cloud worker state')
+
+    def test_recovery_preserves_assessment_committed_before_job_completion(self):
+        seed(self.store)
+        q = Queue(ScreeningService(self.store, DemoProvider()))
+        role = self.store.list_roles()[0]['role_version']
+        q.submit({'request_id':'commit-boundary','role_version':role,'profile_text':'Used Linux logs'})
+        q.process_one()
+        with self.store.connect() as db:
+            raw = json.loads(db.execute("SELECT document FROM jobs WHERE id = ?", ('commit-boundary',)).fetchone()[0])
+            raw['status']='processing'
+            db.execute("UPDATE jobs SET status='processing', document=? WHERE id=?", (json.dumps(raw),'commit-boundary'))
+        q.start()
+        try:
+            self.wait_for(lambda:any(j['id']=='commit-boundary' and j['status']=='completed' for j in q.list()))
+            self.assertEqual(self.store.get_run('commit-boundary')['status'],'awaiting_review')
+        finally:
+            q.close()
+
+    def test_overlapping_revisions_and_worker_handoff(self):
+        seed(self.store)
+        q1 = Queue(ScreeningService(self.store, DemoProvider()))
+        q2 = Queue(ScreeningService(Store(self.url), DemoProvider()))
+        q1.start(); q2.start()
+        try:
+            self.wait_for(lambda: q1.leader != q2.leader)
+            leader, standby = (q1,q2) if q1.leader else (q2,q1)
+            self.assertTrue(standby.store.ready())
+            role = self.store.list_roles()[0]['role_version']
+            standby.submit({'request_id':'overlap-job','role_version':role,'profile_text':'Used Linux logs'})
+            self.wait_for(lambda: any(j['id']=='overlap-job' and j['status']=='completed' for j in standby.list()))
+            leader.close()
+            self.wait_for(lambda: standby.leader)
+            standby.submit({'request_id':'after-handoff','role_version':role,'profile_text':'Used SQL queries'})
+            self.wait_for(lambda: any(j['id']=='after-handoff' and j['status']=='completed' for j in standby.list()))
+        finally:
+            q1.close(); q2.close()
+
+    def test_lost_leader_does_not_repeat_or_overwrite_inflight_model_call(self):
+        from threading import Event
+        started, finish = Event(), Event()
+        class SlowProvider(DemoProvider):
+            calls = 0
+            def analyze(inner, *args):
+                inner.calls += 1
+                started.set()
+                finish.wait(15)
+                return super().analyze(*args)
+        seed(self.store)
+        provider = SlowProvider()
+        q1 = Queue(ScreeningService(self.store, provider)); q1.start()
+        q2 = Queue(ScreeningService(Store(self.url), provider))
+        try:
+            self.wait_for(lambda:q1.leader)
+            role = self.store.list_roles()[0]['role_version']
+            q1.submit({'request_id':'interrupted','role_version':role,'profile_text':'Used Linux logs'})
+            self.assertTrue(started.wait(5))
+            q1.stop.set()
+            q1.worker.store.database.instance_lock.close()
+            q2.start()
+            self.wait_for(lambda:q2.leader)
+            self.wait_for(lambda:self.store.get_run('interrupted')['status']=='failed')
+            finish.set()
+            q1.thread.join(timeout=5)
+            self.assertEqual(provider.calls,1)
+            self.assertEqual(self.store.get_run('interrupted')['error'],'interrupted_retry_with_new_id')
+        finally:
+            finish.set(); q1.close(); q2.close()
+
     def test_sqlite_migration_preserves_records_and_refuses_nonempty_target(self):
         from tempfile import TemporaryDirectory
         from screening.migrate import migrate

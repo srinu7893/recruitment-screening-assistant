@@ -43,6 +43,15 @@ class Store:
     def connect(self):
         return self.database.connect()
 
+    def worker_copy(self):
+        # Share connection configuration, never the live ownership connection.
+        import copy
+        store = object.__new__(Store)
+        store.database = copy.copy(self.database)
+        store.database.instance_lock = None
+        store.path, store.backend = self.path, self.backend
+        return store
+
     def acquire_instance(self):
         return self.database.acquire_instance()
 

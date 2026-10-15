@@ -15,6 +15,8 @@ class Queue:
         self.stop = Event()
         self.thread = None
         self.last_error = None
+        self.leader = False
+        self.worker = None
 
     def submit(self, request, metadata=None, actor="operator"):
         if not isinstance(request, dict) or set(request) != {"request_id", "role_version", "profile_text"}:
@@ -68,21 +70,32 @@ class Queue:
             db.execute("INSERT INTO audit(at, actor, action, target) VALUES (?, ?, ?, ?)",
                        (now(), actor, "job_cancelled", key))
 
-    def start(self):
+    def recover(self):
         # Never silently repeat a paid call after a process crash.
         with self.store.connect() as db:
             rows = db.execute("SELECT id, document FROM jobs WHERE status = 'processing'").fetchall()
             for key, document in rows:
                 job = json.loads(document)
-                job.update(status="failed", error="interrupted_retry_with_new_id")
-                job.pop("request", None)
-                db.execute("UPDATE jobs SET status = 'failed', document = ? WHERE id = ?", (json.dumps(job), key))
-            for key, document in db.execute("SELECT id, document FROM runs").fetchall():
-                run = json.loads(document)
-                if run["status"] in ("received", "evaluating", "validating"):
-                    run.update(status="failed", error="interrupted_retry_with_new_id", result=None)
-                    db.execute("UPDATE runs SET document = ? WHERE id = ?", (json.dumps(run), key))
-        self.thread = Thread(target=self.loop, daemon=True)
+                saved = db.execute("SELECT document FROM runs WHERE id = ?", (key,)).fetchone()
+                run = json.loads(saved[0]) if saved else None
+                # The assessment may have committed just before the process lost
+                # ownership, while the job completion write was still pending.
+                if run and run['status'] in ('awaiting_review', 'completed') and run.get('result'):
+                    job.update(status='completed', error=None)
+                else:
+                    error = run.get('error') if run and run['status'] == 'failed' else 'interrupted_retry_with_new_id'
+                    job.update(status='failed', error=error or 'job_failed')
+                    if run and run['status'] in ('received', 'evaluating', 'validating'):
+                        run.update(status='failed', error='interrupted_retry_with_new_id', result=None)
+                        db.execute("UPDATE runs SET document = ? WHERE id = ?", (json.dumps(run), key))
+                job.pop('request', None)
+                db.execute("UPDATE jobs SET status = ?, document = ? WHERE id = ?", (job['status'], json.dumps(job), key))
+
+    def start(self):
+        if self.store.backend != 'postgresql':
+            self.recover()
+            self.leader = True
+        self.thread = Thread(target=self.cloud_loop if self.store.backend == 'postgresql' else self.loop, daemon=True)
         self.thread.start()
 
     def process_one(self):
@@ -118,7 +131,44 @@ class Queue:
             if not processed:
                 self.stop.wait(2 if self.store.backend == "postgresql" else 0.25)
 
+    def cloud_loop(self):
+        from .workflow import ScreeningService
+        while not self.stop.is_set():
+            worker_store = self.store.worker_copy()
+            lock = None
+            try:
+                try:
+                    lock = worker_store.acquire_instance()
+                except ValueError:
+                    # Another revision owns the worker. HTTP remains available.
+                    self.last_error = None
+                    self.stop.wait(2)
+                    continue
+                worker = Queue(ScreeningService(worker_store, self.service.provider))
+                self.worker = worker
+                if self.stop.is_set():
+                    break
+                worker.recover()
+                self.leader = True
+                self.last_error = None
+                while not self.stop.is_set():
+                    processed = worker.process_one()
+                    if not processed:
+                        self.stop.wait(2)
+            except Exception:
+                self.last_error = 'worker_connection_unavailable'
+                self.stop.wait(2)
+            finally:
+                self.leader = False
+                if lock:
+                    lock.close()
+                self.worker = None
+
     def close(self):
         self.stop.set()
         if self.thread:
-            self.thread.join(timeout=50)
+            self.thread.join(timeout=5 if self.store.backend == 'postgresql' else 50)
+        # Cloud Run may terminate after ten seconds. Fence any outstanding model
+        # call now; its result cannot write after a successor takes ownership.
+        if self.worker and self.worker.store.database.instance_lock:
+            self.worker.store.database.instance_lock.close()

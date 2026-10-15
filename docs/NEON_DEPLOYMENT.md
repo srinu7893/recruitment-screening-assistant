@@ -4,7 +4,7 @@
 
 GitHub stores the code and runs the automated tests. GitHub Pages can host only the offline showcase; it cannot run the Python API, document parsing or background screening. Run the full app as a Linux container behind HTTPS. `DATABASE_URL` selects PostgreSQL; without it, the app uses the existing local SQLite database.
 
-The owner's `otel-payment-platform-poc` deployment guide uses Docker, Cloud Run, WIF and Secret Manager, with Neon as an external database. This app follows the same separation of code, runtime configuration and database secrets. No project IDs, service accounts, secrets or deployment permissions were copied. The payment deployment's overlapping revision rollout is **not compatible with this single-worker release**.
+The owner's `otel-payment-platform-poc` deployment guide uses Docker, Cloud Run, WIF and Secret Manager, with Neon as an external database. This app follows the same separation of code, runtime configuration and database secrets. No project IDs, service accounts, secrets or deployment permissions were copied. The current cloud release adds PostgreSQL worker leadership so overlapping web revisions can remain available. Use the [Cloud Run/IAP guide](CLOUD_WORKSPACE.md) for the browser-only cloud path.
 
 ## Recommended supported topology
 
@@ -42,13 +42,13 @@ The target must be empty. The migration locks both stores, copies all five table
 - `GET /readyz`: public, status-only readiness; checks database and worker availability, without exposing configuration or candidate data.
 - `GET /health`: authenticated identity/provider/database type.
 
-A lost database ownership session fails closed. Readiness becomes unhealthy; restart the service after connectivity is restored. The app never transparently replays a paid screening call. Queued jobs persist; interrupted jobs require explicit retry with a new ID. Monitor health and configure your host to restart unhealthy containers; Docker's restart policy alone does not restart a merely unhealthy process.
+A lost worker ownership session fails closed for worker writes. PostgreSQL workers retry leadership; HTTP requests use independent connections and remain available when the database is reachable. The app never transparently replays a paid screening call. Queued jobs persist; interrupted jobs require explicit retry with a new ID. Monitor health and configure your host to restart unhealthy containers; Docker's restart policy alone does not restart a merely unhealthy process.
 
-## Cloud Run caveat and next platform phase
+## Cloud Run
 
-Cloud Run is not marked ready for a standard rolling deployment. Its overlapping revisions and restarts require a separate leased-worker/leader design before safe zero-downtime operation. Setting maximum instances to one alone does not solve revision overlap. Background work also needs an appropriate CPU allocation/minimum-instance configuration. Do not copy the payment app's candidate rollout unmodified. The provided Compose recipe supports a controlled stop-before-start deployment today.
+Cloud Run deployment, IAP identity and worker handoff are documented in [CLOUD_WORKSPACE.md](CLOUD_WORKSPACE.md). Web revisions share PostgreSQL; only the elected worker screens profiles. Late writes are fenced after connection loss, and interrupted paid calls require explicit retry. This replaces the earlier single-instance rollout limitation. Actual cloud provisioning and end-to-end smoke testing remain pending credentials.
 
-SSO/MFA, organization isolation, horizontal workers, malware scanning and recruiter-validated live model quality remain separate gates. PostgreSQL persistence is not a claim that these are complete.
+The Compose path above remains an optional deployment alternative. Per-organization isolation, document malware scanning and recruiter-validated live quality remain separate gates.
 
 ## References
 

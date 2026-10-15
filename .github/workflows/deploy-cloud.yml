@@ -1,0 +1,68 @@
+name: Deploy recruitment cloud
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: recruitment-cloud-release
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: recruitment-cloud
+    timeout-minutes: 30
+    env:
+      CLOUD_CONFIG: ${{ vars.CLOUD_RUN_CONFIG_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require passing tests for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          run_id=$(gh api "repos/$GH_REPO/actions/workflows/tests.yml/runs" --method GET -f head_sha="$RELEASE_SHA" -f status=success --jq '.workflow_runs[0].id // empty')
+          test -n "$run_id" || { echo 'Wait for Tests to pass on this main commit.'; exit 1; }
+      - name: Validate configuration
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from scripts.cloud_release import validate
+          c=validate(json.loads(os.environ['CLOUD_CONFIG']))
+          Path('cloud-config.json').write_text(json.dumps(c))
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('REGISTRY='+c['region']+'-docker.pkg.dev\n')
+              f.write('IMAGE_BASE='+c['region']+'-docker.pkg.dev/'+c['project']+'/'+c['repository']+'/recruitment\n')
+              f.write('CLOUD_PROJECT='+c['project']+'\n')
+              f.write('REVISION='+c['service']+'-gh-'+os.environ['GITHUB_RUN_ID']+'-'+os.environ['GITHUB_RUN_ATTEMPT']+'\n')
+          PY
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - name: Build and publish immutable image
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "$REGISTRY" --quiet
+          image="$IMAGE_BASE:$GITHUB_SHA-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          docker build -t "$image" .
+          docker push "$image"
+          digest=$(gcloud artifacts docker images describe "$image" --project="$CLOUD_PROJECT" --format='value(image_summary.digest)')
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || exit 1
+          printf 'RELEASE_IMAGE=%s@%s\n' "$IMAGE_BASE" "$digest" >> "$GITHUB_ENV"
+      - name: Deploy protected cloud workspace
+        run: python -m scripts.cloud_release deploy --config cloud-config.json --image "$RELEASE_IMAGE" --revision "$REVISION"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: recruitment-cloud-release
+          path: artifacts/cloud-release/
+          if-no-files-found: ignore

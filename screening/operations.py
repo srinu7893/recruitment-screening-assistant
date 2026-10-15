@@ -119,7 +119,7 @@ def overview(store):
         "demo": sum(r["demo"] for r in rows),
         "by_recommendation": dict(Counter(r["recommendation"] for r in rows if r["recommendation"])),
         "by_source": dict(Counter(r["source_kind"] for r in rows)),
-        "criteria_gaps": list(gaps.values()), "workload": workload(rows)
+        "criteria_gaps": list(gaps.values()), "workload": workload(rows), "activity": activity(rows)
     }}
 
 
@@ -207,3 +207,17 @@ def workload(rows):
         item['urgent'] += row['assignment'].get('priority') == 'urgent'
     return {'unassigned': sum(not r['assignment'].get('assignee') for r in pending),
             'overdue': sum(v['overdue'] for v in owners.values()), 'reviewers': list(owners.values())}
+
+
+def activity(rows):
+    current = datetime.now(timezone.utc)
+    days = {(current.date() - timedelta(days=i)).isoformat(): 0 for i in range(6, -1, -1)}
+    aging = {'under_1_day': 0, '1_to_3_days': 0, 'over_3_days': 0}
+    for row in rows:
+        date = row['created_at'][:10]
+        if date in days:
+            days[date] += 1
+        if row['status'] == 'awaiting_review':
+            age = (current - datetime.fromisoformat(row['created_at'])).total_seconds() / 86400
+            aging['under_1_day' if age < 1 else '1_to_3_days' if age <= 3 else 'over_3_days'] += 1
+    return {'daily_intake': [{'date': k, 'count': v} for k, v in days.items()], 'review_aging': aging}
