@@ -69,6 +69,10 @@ The following cannot be marked verified by committing code: live GCP/Neon/IAP pr
 
 Release artifacts contain the image/revision manifest and previous traffic allocation. Restore the saved explicit revisions through Cloud Run's traffic controls if a release has a functional issue. Candidate startup failures preserve existing traffic. Promotion itself does not test an end-user's IAP entitlement; complete the authenticated smoke test. Database changes and external model charges are not reversed by traffic rollback.
 
+The release keeps existing traffic pinned and assigns a temporary zero-traffic tag to the candidate. A revision-level minimum instance warms the candidate so its scanner and web startup probes actually execute. The script polls readiness for up to ten minutes; a `Ready=True` revision marked `Retired` is not treated as a successful startup. Promotion removes the temporary tag. On pre-promotion failure, the script removes that tag and saves redacted command errors and candidate conditions in the release artifact. This temporarily runs an additional instance during rollout. Existing unrelated traffic tags are preserved.
+
+If GitHub federation fails with `rejected by the attribute condition`, inspect the provider policy. Repositories created after July 15, 2026 use an immutable default subject containing owner/repository IDs. For this repository, restrict `repository_id`, `repository_owner_id`, `ref` and `environment` claims directly instead of comparing the legacy subject string. See [GitHub's immutable subject reference](https://docs.github.com/en/actions/reference/security/oidc#immutable-subject-claims).
+
 Monitor Cloud Run readiness/errors, Neon capacity, job failures and overdue reviews. The service uses always-allocated CPU and a minimum instance for background processing; budget for these resources. Keep secret versions, backup retention and access policy under your organization's control.
 
 ## Official setup references

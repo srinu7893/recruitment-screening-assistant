@@ -1,6 +1,11 @@
 import copy
+import json
+from pathlib import Path
+import subprocess
+from tempfile import TemporaryDirectory
 import unittest
-from scripts.cloud_release import validate, manifest
+from unittest.mock import patch
+from scripts.cloud_release import validate, manifest, candidate_tag, wait_for_revision, deploy, command, CloudCommandError
 
 
 class ReleaseTests(unittest.TestCase):
@@ -23,7 +28,68 @@ class ReleaseTests(unittest.TestCase):
     def test_existing_traffic_is_pinned_before_candidate_startup(self):
         current={'status':{'latestReadyRevisionName':'recruitment-old','traffic':[{'latestRevision':True,'percent':100}]}}
         doc=manifest(self.config,self.image,'recruitment-new',current)
-        self.assertEqual(doc['spec']['traffic'],[{'revisionName':'recruitment-old','percent':100}])
+        self.assertEqual(doc['spec']['traffic'],[
+            {'revisionName':'recruitment-old','percent':100},
+            {'revisionName':'recruitment-new','percent':0,'tag':candidate_tag('recruitment-new')}])
+        self.assertEqual(doc['spec']['template']['metadata']['annotations']['autoscaling.knative.dev/minScale'], '1')
+
+    def test_waits_for_image_import_and_does_not_accept_retired_ready_revision(self):
+        states = [
+            {'status': {'conditions': [{'type':'Ready','status':'Unknown','reason':'Deploying'}]}},
+            {'status': {'conditions': [{'type':'Ready','status':'True','reason':'Retired'}]}},
+            {'status': {'conditions': [{'type':'Ready','status':'True'}, {'type':'Active','status':'True'}]}},
+        ]
+        with TemporaryDirectory() as folder, patch('scripts.cloud_release.command', side_effect=[json.dumps(s) for s in states]) as run, patch('scripts.cloud_release.time.sleep') as sleep:
+            result = wait_for_revision(self.config, 'recruitment-new', Path(folder))
+            self.assertEqual(result, states[-1])
+            self.assertEqual(run.call_count, 3)
+            self.assertEqual(sleep.call_count, 2)
+            self.assertTrue((Path(folder) / 'candidate-status.json').exists())
+
+    def test_startup_failure_keeps_old_traffic_and_removes_only_candidate_tag(self):
+        current = {'status': {'url': self.config['public_url'], 'traffic': [{'revisionName':'recruitment-old','percent':100}]}}
+        replies = [json.dumps([{'metadata':{'name':'recruitment'}}]), json.dumps(current), '', '']
+        with TemporaryDirectory() as folder, patch('scripts.cloud_release.command', side_effect=replies) as run, patch('scripts.cloud_release.wait_for_revision', side_effect=ValueError('Scanner startup failed')):
+            with self.assertRaisesRegex(ValueError, 'Scanner startup failed'):
+                deploy(self.config, self.image, 'recruitment-new', Path(folder))
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertFalse(any('--to-revisions' in args for args in commands))
+            self.assertIn('--remove-tags', commands[-1])
+            saved = json.loads((Path(folder) / 'previous-traffic.json').read_text())
+            self.assertEqual(saved, [{'revisionName':'recruitment-old','percent':100}])
+            self.assertIn('Scanner startup failed', (Path(folder) / 'error.json').read_text())
+
+    def test_promotes_only_after_readiness_and_removes_temporary_tag(self):
+        current = {'status': {'url': self.config['public_url'], 'traffic': [{'revisionName':'recruitment-old','percent':100}]}}
+        with TemporaryDirectory() as folder, patch('scripts.cloud_release.command', side_effect=[json.dumps([{'metadata':{'name':'recruitment'}}]),json.dumps(current),'','']) as run, patch('scripts.cloud_release.wait_for_revision') as ready:
+            deploy(self.config, self.image, 'recruitment-new', Path(folder))
+            ready.assert_called_once()
+            promotion = run.call_args_list[-1].args[0]
+            self.assertIn('--to-revisions', promotion)
+            self.assertIn('recruitment-new=100', promotion)
+            self.assertIn(candidate_tag('recruitment-new'), promotion)
+
+    def test_failed_cloud_command_reports_reason_without_credentials(self):
+        failure = subprocess.CalledProcessError(1, ['gcloud'], stderr='PERMISSION_DENIED: run.services.update failed; postgresql://user:private@host/db Bearer private-token password=private-password')
+        with patch('scripts.cloud_release.subprocess.run', side_effect=failure):
+            with self.assertRaises(CloudCommandError) as caught:
+                command(['gcloud','run','services','replace','service.json'])
+        message = str(caught.exception)
+        self.assertIn('run.services.update', message)
+        self.assertNotIn('private', message)
+
+    def test_startup_probe_failure_is_reported_immediately(self):
+        state = {'status': {'conditions': [{'type':'Ready','status':'False','message':'Scanner failed its startup probe'}]}}
+        with TemporaryDirectory() as folder, patch('scripts.cloud_release.command', return_value=json.dumps(state)), patch('scripts.cloud_release.time.sleep') as sleep:
+            with self.assertRaisesRegex(ValueError, 'Scanner failed its startup probe'):
+                wait_for_revision(self.config, 'recruitment-new', Path(folder))
+            sleep.assert_not_called()
+
+    def test_wait_has_a_bounded_deadline(self):
+        state = {'status': {'conditions': [{'type':'Ready','status':'Unknown'}]}}
+        with TemporaryDirectory() as folder, patch('scripts.cloud_release.command', return_value=json.dumps(state)), patch('scripts.cloud_release.time.monotonic', side_effect=[0,0,601]), patch('scripts.cloud_release.time.sleep'):
+            with self.assertRaisesRegex(ValueError, 'Timed out'):
+                wait_for_revision(self.config, 'recruitment-new', Path(folder))
 
     def test_rejects_mutable_image_unpinned_secret_and_placeholders(self):
         with self.assertRaises(ValueError):manifest(self.config,self.image.split('@')[0]+':latest','recruitment-new')
