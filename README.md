@@ -30,6 +30,10 @@ Reviewer assignments now include priority, due dates, assigned-to-me/overdue fil
 
 ## Start locally (Linux / Python 3.12+)
 
+On Windows with this project's virtual environment already installed, run **`start-local.cmd`**. This starts the full persistent application at **http://127.0.0.1:8000**, loads fictional showcase profiles, and enables a local resume intake agent. Open `data/local-token.txt` for the workspace access token. The **Automation** page controls scheduling, shows the inbox path, and tracks imports, jobs, errors and saved reviews. See the [application walkthrough](docs/APPLICATION_DEMO.md).
+
+The native Windows parser uses a bounded Job Object; Linux retains its existing resource limits. Both use isolated subprocesses. Cloud Run uses PostgreSQL plus uploads/configured feeds; folder watching is local-only. See the [cloud setup checklist with discovered project details](docs/CLOUD_SETUP_CHECKLIST.md).
+
 ```sh
 python -m venv .venv
 source .venv/bin/activate

@@ -6,11 +6,11 @@ from .showcase import export_dataset
 
 def build():
     root = Path(__file__).resolve().parents[1]
-    template = (root / 'screening/static/showcase-template.html').read_text()
+    template = (root / 'screening/static/showcase-template.html').read_text(encoding='utf-8')
     data = json.dumps(export_dataset(), ensure_ascii=False).replace('<', '\\u003c')
     output = root / 'showcase/index.html'
     output.parent.mkdir(exist_ok=True)
-    output.write_text(template.replace('__SHOWCASE_DATA__', data))
+    output.write_text(template.replace('__SHOWCASE_DATA__', data), encoding='utf-8')
     return output
 
 

@@ -40,7 +40,12 @@ def extract_upload(filename, encoded):
         try:
             stdout, _ = proc.communicate(timeout=120)
         except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
+            if os.name == 'nt':
+                # The parser's Job Object limits its OCR children as well.
+                subprocess.run(['taskkill', '/PID', str(proc.pid), '/T', '/F'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
             proc.communicate()
             raise ValueError("Document extraction timed out") from None
     if proc.returncode or len(stdout) > 500_000:

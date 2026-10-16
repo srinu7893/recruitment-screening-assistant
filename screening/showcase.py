@@ -10,7 +10,7 @@ from .workflow import ScreeningService
 
 
 def dataset():
-    return json.loads(Path(__file__).with_name("fixtures").joinpath("production_support.json").read_text())
+    return json.loads(Path(__file__).with_name("fixtures").joinpath("production_support.json").read_text(encoding='utf-8'))
 
 
 class FixtureProvider:

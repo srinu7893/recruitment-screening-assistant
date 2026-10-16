@@ -10,6 +10,9 @@ TABLES = {
     'jobs': ('id', 'fingerprint', 'status', 'document'),
     'audit': ('id', 'at', 'actor', 'action', 'target'),
     'webhook_events': ('id', 'at'),
+    'automation_settings': ('id', 'document'),
+    'intake_records': ('id', 'document'),
+    'automation_events': ('id', 'at', 'document'),
 }
 
 
@@ -28,7 +31,7 @@ def migrate(source, target):
                 src.execute('BEGIN IMMEDIATE')
                 # Exclusive tables prevent a concurrent non-server writer from
                 # introducing rows after the empty-target check.
-                dst.execute('LOCK TABLE roles, runs, jobs, audit, webhook_events IN ACCESS EXCLUSIVE MODE')
+                dst.execute('LOCK TABLE ' + ', '.join(TABLES) + ' IN ACCESS EXCLUSIVE MODE')
                 if any(dst.execute(f'SELECT count(*) FROM {table}').fetchone()[0] for table in TABLES):
                     raise ValueError('Target database must be empty; no records were copied')
                 for table, columns in TABLES.items():

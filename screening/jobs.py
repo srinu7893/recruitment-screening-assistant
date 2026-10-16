@@ -30,7 +30,8 @@ class Queue:
             "provider": self.service.provider.name, "model": self.service.provider.model}, sort_keys=True).encode()).hexdigest()
         job = {"id": request["request_id"], "status": "queued", "created_at": now(),
                "request": request, "metadata": metadata, "actor": actor, "error": None,
-               "provider": self.service.provider.name, "model": self.service.provider.model}
+               "provider": self.service.provider.name, "model": self.service.provider.model,
+               "role_version": request['role_version']}
         with self.store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             existing = db.execute("SELECT fingerprint, document FROM jobs WHERE id = ?", (job["id"],)).fetchone()
@@ -49,7 +50,11 @@ class Queue:
 
     @staticmethod
     def public(job):
-        return {k: job[k] for k in ("id", "status", "created_at", "error")}
+        return {**{k: job[k] for k in ("id", "status", "created_at", "error")},
+                'source': job.get('metadata', {}).get('kind', 'paste'),
+                'filename': job.get('metadata', {}).get('filename'),
+                'role_version': job.get('role_version') or job.get('request', {}).get('role_version'),
+                'finished_at': job.get('finished_at')}
 
     def list(self):
         with self.store.connect() as db:
@@ -115,7 +120,9 @@ class Queue:
             job.update(status="failed" if result["status"] == "failed" else "completed", error=result["error"])
         except Exception:
             job.update(status="failed", error="job_failed")
+        job['role_version'] = job.get('role_version') or job.get('request', {}).get('role_version')
         job.pop("request", None)  # Keep source only in run; no second profile copy.
+        job['finished_at'] = now()
         with self.store.connect() as db:
             db.execute("UPDATE jobs SET status = ?, document = ? WHERE id = ?", (job["status"], json.dumps(job), key))
         return True

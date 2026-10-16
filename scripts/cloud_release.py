@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def validate(c, require_scanner=True):
@@ -17,14 +18,40 @@ def validate(c, require_scanner=True):
     from screening.deployment import public_origin
     if not public_origin(c.get('public_url')) or 'replace' in c['public_url']:
         raise ValueError('Set the canonical public HTTPS URL')
-    if not c.get('iap_audience','').startswith('/projects/'+c['project_number']+'/'):
-        raise ValueError('Set the exact IAP audience for this project')
+    expected_audience = f"/projects/{c['project_number']}/locations/{c['region']}/services/{c['service']}"
+    if c.get('iap_audience') != expected_audience:
+        raise ValueError('Set the exact direct Cloud Run IAP audience for this service and region')
     if c.get('provider') not in ('demo','openai'):
         raise ValueError('Provider must be demo or openai')
+    schema = c.get('database_schema', 'public')
+    if (not isinstance(schema, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', schema)
+            or schema.startswith('pg_') or schema == 'information_schema'):
+        raise ValueError('Invalid database_schema')
     if (require_scanner or c.get('scanner_image')) and not re.fullmatch(r'[a-z0-9][a-z0-9./:_-]+@sha256:[a-f0-9]{64}', c.get('scanner_image','')):
         raise ValueError('Provide an immutable scanner image digest')
     if not isinstance(c.get('greenhouse_attachment_hosts',''), str) or any(ch in c.get('greenhouse_attachment_hosts','') for ch in '\r\n'):
         raise ValueError('Greenhouse attachment hosts must be a comma-separated string')
+    hosts = c.get('allowed_hosts', [])
+    if (not isinstance(hosts, list) or len(hosts) > 50 or
+            any(not isinstance(h, str) or not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', h) for h in hosts)):
+        raise ValueError('allowed_hosts must contain exact lowercase hostnames')
+    url = c.get('connector_url', '')
+    if url:
+        if not isinstance(url, str) or len(url) > 4000:
+            raise ValueError('Invalid connector URL')
+        parsed = urlsplit(url)
+        if (parsed.scheme != 'https' or parsed.hostname not in hosts or parsed.username or
+                parsed.password or parsed.fragment or parsed.port not in (None, 443)):
+            raise ValueError('Connector requires an allowlisted HTTPS host without credentials')
+    for key, minimum, maximum in [('sync_seconds', 60, 86400), ('retention_days', 1, 3650)]:
+        value = c.get(key, 0)
+        if type(value) is not int or (value != 0 and not minimum <= value <= maximum):
+            raise ValueError('Invalid ' + key)
+    role = c.get('connector_role', '')
+    if not isinstance(role, str) or len(role) > 120 or any(ch in role for ch in '\r\n'):
+        raise ValueError('Invalid connector_role')
+    if c.get('sync_seconds') and (not url or not role):
+        raise ValueError('Scheduled feed sync requires connector_url and connector_role')
     required = {'DATABASE_URL','SCREENING_IAP_ACCOUNTS'}
     if c['provider']=='openai':
         required.add('OPENAI_API_KEY')
@@ -50,6 +77,12 @@ def manifest(c, image, revision, current=None):
         raise ValueError('Invalid revision name')
     env={'SCREENING_PUBLIC_URL':c['public_url'],'SCREENING_AUTH_MODE':'iap',
          'SCREENING_SCAN_MODE':'clamd','GREENHOUSE_ATTACHMENT_HOSTS':c.get('greenhouse_attachment_hosts',''),'SCREENING_IAP_AUDIENCE':c['iap_audience'],'SCREENING_PROVIDER':c['provider']}
+    env.update(SCREENING_DB_SCHEMA=c.get('database_schema', 'public'),
+               SCREENING_ALLOWED_HOSTS=','.join(c.get('allowed_hosts', [])),
+               SCREENING_CONNECTOR_URL=c.get('connector_url', ''),
+               SCREENING_CONNECTOR_ROLE=c.get('connector_role', ''),
+               SCREENING_SYNC_SECONDS=str(c.get('sync_seconds', 0)),
+               SCREENING_RETENTION_DAYS=str(c.get('retention_days', 0)))
     if c.get('model'):
         env['OPENAI_MODEL']=c['model']
     values=[{'name':k,'value':v} for k,v in env.items()]

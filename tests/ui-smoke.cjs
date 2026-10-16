@@ -127,6 +127,6 @@ const assert = require('node:assert/strict');
     if(browser)await browser.close();
     server.kill('SIGTERM');
     await new Promise(resolve => {if(server.exitCode!==null)resolve();else server.once('exit',resolve);});
-    fs.rmSync(directory,{recursive:true,force:true});
+    fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:200});
   }
 })().catch(error=>{console.error(error);process.exit(1);});

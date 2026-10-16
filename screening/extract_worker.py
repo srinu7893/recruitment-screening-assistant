@@ -1,7 +1,6 @@
 """Linux parser worker. No network fetches or Office macro execution."""
 import json
 from pathlib import Path
-import resource
 import shutil
 import subprocess
 import sys
@@ -57,11 +56,12 @@ def extract(path):
 
 
 if __name__ == "__main__":
-    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024 * 1024,) * 2)
-    resource.setrlimit(resource.RLIMIT_CPU, (90, 90))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (30 * 1024 * 1024,) * 2)
+    from .parser_limits import apply
+    apply()
     try:
         result = extract(Path(sys.argv[1]))
+    except UnicodeError:
+        result = {"error": "Save text resumes as UTF-8 TXT, or upload a PDF or DOCX file."}
     except ValueError as exc:
         result = {"error": str(exc)[:200]}
     except Exception:

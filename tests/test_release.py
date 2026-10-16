@@ -29,5 +29,27 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):manifest(self.config,self.image.split('@')[0]+':latest','recruitment-new')
         c=copy.deepcopy(self.config);c['secrets']['DATABASE_URL']['version']='latest'
         with self.assertRaises(ValueError):validate(c)
+
+    def test_cloud_feed_configuration_is_wired_and_rejects_unsafe_sources(self):
+        c = {**self.config, 'allowed_hosts': ['ats.example.com'],
+             'connector_url': 'https://ats.example.com/resumes', 'connector_role': 'support:v1',
+             'sync_seconds': 300, 'retention_days': 90, 'database_schema': 'recruitment'}
+        env = {row['name']: row.get('value') for row in manifest(c, self.image, 'recruitment-new')['spec']['template']['spec']['containers'][0]['env']}
+        self.assertEqual(env['SCREENING_ALLOWED_HOSTS'], 'ats.example.com')
+        self.assertEqual(env['SCREENING_CONNECTOR_URL'], c['connector_url'])
+        self.assertEqual(env['SCREENING_SYNC_SECONDS'], '300')
+        self.assertEqual(env['SCREENING_RETENTION_DAYS'], '90')
+        self.assertEqual(env['SCREENING_DB_SCHEMA'], 'recruitment')
+        for changes in [{'connector_url': 'http://ats.example.com/resumes'},
+                        {'connector_url': 'https://other.example.com/resumes'},
+                        {'connector_url': 'https://user:secret@ats.example.com/resumes'},
+                        {'allowed_hosts': ['*.example.com']}, {'sync_seconds': 1},
+                        {'retention_days': -1}, {'connector_role': ''},
+                        {'iap_audience': '/projects/123456789012/locations/other/services/other'}]:
+            with self.assertRaises(ValueError):
+                validate({**c, **changes})
+        for schema in ['public,recruitment', 'pg_catalog', 'bad;sql']:
+            with self.assertRaises(ValueError):
+                validate({**c, 'database_schema': schema})
         c=copy.deepcopy(self.config);c['project']='replace-project'
         with self.assertRaises(ValueError):validate(c)

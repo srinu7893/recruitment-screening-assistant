@@ -126,7 +126,7 @@ def import_records(queue, records, role_version, actor, source="ats-export", *, 
         profile = text(record.get("profile_text"), "profile_text", 50_000)
         identity = hashlib.sha256(json.dumps([source, external, role_version, profile]).encode()).hexdigest()
         normalized.append(({"request_id": "import-" + identity[:40], "role_version": role_version,
-                            "profile_text": profile}, {**(source_metadata or {}), "kind": source, "external_id": external}))
+                            "profile_text": profile}, {**(source_metadata or {}), "kind": source, "external_id": external, "display_name": external}))
     jobs = []
     errors = []
     for request, metadata in normalized:

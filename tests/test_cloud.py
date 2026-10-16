@@ -10,6 +10,18 @@ from screening.storage import Store, ConflictError
 
 
 class CloudTests(unittest.TestCase):
+    def test_schema_configuration_is_strict_and_excludes_public_fallback(self):
+        from unittest.mock import patch
+        for schema in ['recruitment', 'recruitment_demo']:
+            with patch.dict('os.environ', {'SCREENING_DB_SCHEMA': schema}):
+                db = Database('postgresql://test:test@127.0.0.1/screening_test')
+                self.assertIn('search_path=' + schema, db.parameters['options'])
+                self.assertNotIn(schema + ',public', db.parameters['options'])
+        for schema in ['public,other', 'recruitment;drop', 'pg_catalog', 'information_schema', '', 'UPPER']:
+            with patch.dict('os.environ', {'SCREENING_DB_SCHEMA': schema}):
+                with self.assertRaises(ValueError):
+                    Database('postgresql://test:test@127.0.0.1/screening_test')
+
     def test_remote_database_requires_verified_tls_and_direct_url(self):
         for url in ['postgresql://x:secret@ep-example.neon.tech/app',
                     'postgresql://x:secret@ep-example-pooler.neon.tech/app?sslmode=verify-full']:

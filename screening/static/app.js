@@ -101,3 +101,31 @@ function renderScorecards(root,run){
 }
 
 $('greenhouse-form').addEventListener('submit',task(async()=>{const result=await api('/integrations/greenhouse',{candidate_id:Number($('greenhouse-candidate').value),attachment_id:Number($('greenhouse-attachment').value),role_version:$('greenhouse-role').value});notice(result.jobs.length+' resume(s) queued. '+result.errors.map(e=>e.error).join('; '));await refresh();}));
+
+// Persistent source automation and the end-to-end processing ledger.
+const agentNav=button('◉   Automation',()=>tab('automation'));
+agentNav.dataset.tab='automation';
+document.querySelector('nav').append(agentNav);
+const baseTab=tab;
+tab=function(name){baseTab(name);if(name==='automation'){$('page-title').textContent='Automation & records';loadAutomation().catch(error=>notice(error.message));}};
+let agentRevision=0,agentDirty=false;
+$('automation-form').addEventListener('input',()=>{agentDirty=true;});
+function agentTable(target,headers,rows){const table=el('table'),head=el('thead'),tr=el('tr');headers.forEach(h=>tr.append(el('th',h)));head.append(tr);table.append(head);const body=el('tbody');for(const cells of rows){const row=el('tr');for(const value of cells){const td=el('td');td.append(typeof value==='string'?document.createTextNode(value):value);row.append(td);}body.append(row);}table.append(body);$(target).replaceChildren(rows.length?table:el('p','No records yet. Add a resume or run the intake agent.','muted'));}
+async function loadAutomation(){
+ const [value,jobs]=await Promise.all([api('/automation'),api('/jobs')]);
+ const s=value.settings,admin=state.identity.role==='admin';
+ $('agent-state').textContent=(value.running?'Checking sources':s.enabled?'Automatic intake enabled':'Automatic intake paused')+' · Screening worker: '+value.worker+(value.worker_error?' · '+value.worker_error:'');
+ $('agent-inbox-path').textContent=value.inbox_path||'Local folder path is available to administrators when configured.';
+ $('agent-feed-state').textContent=value.feed_configured?'JSON feed configured. Enable synchronization to include it in intake.':'No JSON feed configured. An administrator can set the source URL and credentials on the server.';
+ if(!agentDirty){agentRevision=s.revision;roleOptions('automation-role');$('automation-role').value=s.role_version;$('automation-enabled').checked=s.enabled;$('automation-inbox').checked=s.inbox_enabled;$('automation-feed').checked=s.feed_enabled;$('automation-interval').value=s.interval_seconds;}
+ for(const node of $('automation-form').elements)node.disabled=!admin;
+ $('agent-metrics').replaceChildren();
+ for(const [title,count]of [['Inbox receipts',value.record_counts.total],['Processing now',jobs.filter(j=>['queued','processing'].includes(j.status)).length],['Ready for review',state.metrics?.awaiting_review||0],['Import issues',value.record_counts.failed]]){const card=el('div',undefined,'metric');card.append(el('span',title),el('strong',String(count)));$('agent-metrics').append(card);}
+ agentTable('agent-records',['Resume','Role','Intake status','Received','Record'],value.records.map(r=>[r.filename,r.role_version,r.error||(r.status==='queued'?'Imported':label(r.status)),new Date(r.at).toLocaleString(),r.status==='failed'&&admin?button('Retry import',async()=>{await api('/automation/retry',{id:r.id});await loadAutomation();notice('Retry requested. Check sources now or wait for the next enabled cycle.');}):state.runs.some(run=>run.run_id===r.job_id)?button('Open review',()=>openRun(r.job_id)):el('span',r.status==='deleted'?'Deleted':r.status==='retry_requested'?'Retry requested':'See processing jobs','muted')]));
+ agentTable('agent-jobs',['Source / file','Role','Stage','Received','Review'],jobs.map(j=>[j.filename||j.source,j.role_version||'—',j.error||({completed:'Screening complete',processing:'Screening',queued:'Queued',cancelled:'Cancelled',failed:'Screening failed'}[j.status]||j.status),new Date(j.created_at).toLocaleString(),state.runs.some(r=>r.run_id===j.id)?button('Open review',()=>openRun(j.id)):el('span',['failed','cancelled'].includes(j.status)?'No review available':'Waiting','muted')]));
+ $('agent-events').replaceChildren();if(!value.events.length)$('agent-events').append(el('p','No intake cycles yet. Save a role and check your sources.','muted'));
+ for(const e of value.events){const row=el('div',undefined,'audit-row');row.append(el('strong',e.status==='completed'?'Intake cycle complete':'Intake needs attention'),el('p',e.queued+' queued / reused · '+e.failed+' issues · '+(e.sources.join(', ')||'No enabled sources')+' · '+new Date(e.at).toLocaleString(),'small'));if(e.error)row.append(el('p',e.error,'muted'));$('agent-events').append(row);}
+}
+$('automation-form').addEventListener('submit',task(async()=>{await api('/automation/settings',{enabled:$('automation-enabled').checked,role_version:$('automation-role').value,inbox_enabled:$('automation-inbox').checked,feed_enabled:$('automation-feed').checked,interval_seconds:Number($('automation-interval').value),revision:agentRevision});agentDirty=false;await loadAutomation();notice('Automation saved. The agent will use these settings after restart too.');}));
+$('agent-run').addEventListener('click',task(async()=>{if(agentDirty)throw Error('Save your automation settings before checking sources.');$('agent-run').disabled=true;try{const value=await api('/automation/run',{});await refresh();await loadAutomation();notice('Source check complete: '+value.queued+' queued / reused, '+value.failed+' issues.');}finally{$('agent-run').disabled=state.identity.role!=='admin';}}));
+setInterval(()=>{if(state.identity&&!$('automation').hidden)loadAutomation().catch(()=>{});},5000);
