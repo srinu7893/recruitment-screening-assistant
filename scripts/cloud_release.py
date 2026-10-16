@@ -1,8 +1,10 @@
 """Validated Cloud Run release manifest. Secret values never enter this script."""
 import argparse
+import hashlib
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -68,6 +70,10 @@ def validate(c, require_scanner=True):
     return c
 
 
+def candidate_tag(revision):
+    return 'verify-' + hashlib.sha256(revision.encode()).hexdigest()[:12]
+
+
 def manifest(c, image, revision, current=None):
     validate(c)
     registry=f"{c['region']}-docker.pkg.dev/{c['project']}/{c['repository']}/recruitment"
@@ -98,6 +104,7 @@ def manifest(c, image, revision, current=None):
             traffic.append(item)
         if not traffic or sum(x['percent'] for x in traffic)!=100:
             raise ValueError('Existing traffic must total 100 percent')
+        traffic.append({'revisionName':revision, 'percent':0, 'tag':candidate_tag(revision)})
     else:
         traffic=[{'revisionName':revision,'percent':100}]
     probe={'httpGet':{'path':'/readyz','port':8080,'httpHeaders':[{'name':'Host','value':'127.0.0.1:8080'}]},
@@ -108,6 +115,7 @@ def manifest(c, image, revision, current=None):
                     'annotations':{'run.googleapis.com/ingress':'all','run.googleapis.com/iap-enabled':'true',
                                    'run.googleapis.com/minScale':'1','run.googleapis.com/maxScale':'3'}},
         'spec':{'template':{'metadata':{'name':revision,'annotations':{'run.googleapis.com/cpu-throttling':'false',
+                                      'autoscaling.knative.dev/minScale':'1',
                                       'run.googleapis.com/execution-environment':'gen2',
                                       'run.googleapis.com/container-dependencies':'{"web":["scanner"]}'}},
                             'spec':{'serviceAccountName':c['runtime_account'],'containerConcurrency':20,'timeoutSeconds':180,
@@ -118,8 +126,46 @@ def manifest(c, image, revision, current=None):
                                  'startupProbe':{'tcpSocket':{'port':3310},'periodSeconds':10,'failureThreshold':24}}]}},'traffic':traffic}}
 
 
+def safe_detail(value):
+    value = str(value)
+    value = re.sub(r'(?:jdbc:)?postgres(?:ql)?://[^\s\"\'<>]+', '[REDACTED_DATABASE_URL]', value)
+    value = re.sub(r'https?://[^\s\"\'<>]*[?][^\s\"\'<>]*', '[REDACTED_URL_QUERY]', value)
+    value = re.sub(r'(?i)Bearer\s+[^\s\"\']+', 'Bearer [REDACTED]', value)
+    value = re.sub(r'eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+', '[REDACTED_JWT]', value)
+    value = re.sub(r'sk-[A-Za-z0-9_-]{10,}', '[REDACTED_API_KEY]', value)
+    value = re.sub(r'(?i)((?:password|access_token|refresh_token|api_key)[\"\']?\s*[:=]\s*)[\"\']?[^\s,\"\']+', r'\1[REDACTED]', value)
+    return value[-4000:]
+
+
+class CloudCommandError(RuntimeError):
+    pass
+
+
 def command(args):
-    return subprocess.run(args,check=True,text=True,capture_output=True).stdout
+    try:
+        return subprocess.run(args,check=True,text=True,capture_output=True).stdout
+    except subprocess.CalledProcessError as error:
+        operation = ' '.join(args[:4])
+        raise CloudCommandError(operation + ': ' + safe_detail(error.stderr or 'Cloud command failed')) from None
+
+
+def wait_for_revision(c, revision, directory, timeout=600):
+    common=['--project',c['project'],'--region',c['region']]
+    deadline = time.monotonic() + timeout
+    print('Waiting for candidate containers and startup probes before promotion...', flush=True)
+    while time.monotonic() < deadline:
+        document = json.loads(command(['gcloud','run','revisions','describe',revision,*common,'--format=json']))
+        conditions = document.get('status', {}).get('conditions', [])
+        safe_conditions = [{key: safe_detail(row[key]) for key in ('type','status','reason','message') if key in row} for row in conditions]
+        (directory / 'candidate-status.json').write_text(json.dumps({'revision':revision, 'conditions':safe_conditions},indent=2))
+        ready = next((row for row in conditions if row.get('type') == 'Ready'), {})
+        retired = any(row.get('reason') == 'Retired' for row in conditions)
+        if ready.get('status') == 'True' and not retired:
+            return document
+        if ready.get('status') == 'False' and not retired:
+            raise ValueError('Candidate startup failed: ' + safe_detail(ready.get('message') or ready.get('reason') or 'Inspect candidate-status.json'))
+        time.sleep(3)
+    raise ValueError('Timed out waiting for an active, ready candidate; inspect candidate-status.json')
 
 
 def deploy(c,image,revision,directory):
@@ -134,14 +180,27 @@ def deploy(c,image,revision,directory):
     document=manifest(c,image,revision,current)
     directory.mkdir(parents=True,exist_ok=True)
     path=directory/'service.json'; path.write_text(json.dumps(document,indent=2))
-    command(['gcloud','run','services','replace',str(path),*common,'--quiet'])
-    # Replace waits for the startup probe. Existing production traffic was pinned.
-    checked=json.loads(command(['gcloud','run','revisions','describe',revision,*common,'--format=json']))
-    if not any(x.get('type')=='Ready' and x.get('status')=='True' for x in checked.get('status',{}).get('conditions',[])):
-        raise ValueError('Candidate revision did not become ready; existing traffic preserved')
     if current:
-        (directory/'previous-traffic.json').write_text(json.dumps(document['spec']['traffic'],indent=2))
-        command(['gcloud','run','services','update-traffic',c['service'],*common,'--to-revisions',revision+'=100','--quiet'])
+        previous = [row for row in document['spec']['traffic'] if row['revisionName'] != revision]
+        (directory/'previous-traffic.json').write_text(json.dumps(previous,indent=2))
+    try:
+        command(['gcloud','run','services','replace',str(path),*common,'--quiet'])
+        # Replacing a service can return while its zero-traffic revision still
+        # imports images. The temporary tag and revision minimum keep it active.
+        wait_for_revision(c, revision, directory)
+        if current:
+            command(['gcloud','run','services','update-traffic',c['service'],*common,
+                     '--to-revisions',revision+'=100','--remove-tags',candidate_tag(revision),'--quiet'])
+    except Exception as error:
+        detail = safe_detail(error) if isinstance(error, (CloudCommandError, ValueError)) else type(error).__name__
+        (directory/'error.json').write_text(json.dumps({'revision':revision, 'error':detail},indent=2))
+        if current:
+            try:
+                command(['gcloud','run','services','update-traffic',c['service'],*common,
+                         '--remove-tags',candidate_tag(revision),'--quiet'])
+            except CloudCommandError:
+                print('Could not remove candidate tag; inspect its minimum-instance allocation.', flush=True)
+        raise
     (directory/'result.json').write_text(json.dumps({'revision':revision,'url':c['public_url'],'ready':True,
         'note':'Complete authenticated IAP and resume upload smoke test after deployment.'},indent=2))
 
@@ -156,8 +215,10 @@ def main():
         if args.action=='deploy':
             deploy(c,args.image,args.revision,Path('artifacts/cloud-release'))
         print('Cloud configuration validated' if args.action=='validate' else 'Cloud revision ready and promoted')
-    except Exception:
-        parser.exit(2,'Cloud release failed. Check configuration, permissions and Cloud Run revision health. No secret values are printed.\n')
+    except (CloudCommandError, ValueError) as error:
+        parser.exit(2, 'Cloud release failed: ' + safe_detail(error) + '\n')
+    except Exception as error:
+        parser.exit(2,'Cloud release failed ('+type(error).__name__+'). Inspect release artifacts and revision health.\n')
 
 
 if __name__=='__main__':main()
