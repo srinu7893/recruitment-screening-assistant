@@ -2,6 +2,7 @@
 import argparse
 import base64
 import signal
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
@@ -57,6 +58,24 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
             self.wfile.write(body)
 
         def reply(self, status, value):
+            # On Windows, closing a socket with unread POST data can reset the
+            # connection before a 401/403 response reaches the client. Drain only
+            # bounded bodies, with a short total deadline, without parsing them.
+            if status in (401, 403, 429) and self.command == 'POST' and not getattr(self, 'body_consumed', False):
+                try:
+                    remaining = int(self.headers.get('Content-Length', '0'))
+                    deadline = time.monotonic() + 1
+                    if 0 < remaining <= MAX_BODY and not self.headers.get('Transfer-Encoding'):
+                        while remaining and time.monotonic() < deadline:
+                            self.connection.settimeout(min(0.2, max(0.001, deadline - time.monotonic())))
+                            chunk = self.rfile.read(min(remaining, 65536))
+                            if not chunk:
+                                break
+                            remaining -= len(chunk)
+                except (OSError, ValueError):
+                    pass
+                finally:
+                    self.connection.settimeout(150)
             self.send(status, json.dumps(value).encode())
 
         def read_body(self):
@@ -68,6 +87,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
             if not 0 < length <= MAX_BODY:
                 raise ValueError("Body exceeds the request limit")
             raw = self.rfile.read(length)
+            self.body_consumed = True
             if len(raw) != length:
                 raise ValueError("Incomplete body")
             body = json.loads(raw)
@@ -129,6 +149,13 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                         return self.reply(200, service.store.get_run(query["id"][0]) if "id" in query else operations.overview(service.store))
                     if path == "/jobs":
                         return self.reply(200, queue.list())
+                    if path == "/automation":
+                        value = self.server.automation.snapshot()
+                        value['worker'] = 'leader' if queue.leader else 'standby'
+                        value['worker_error'] = queue.last_error or getattr(self.server, 'last_automation_error', None)
+                        if identity['role'] != 'admin':
+                            value['inbox_path'] = None
+                        return self.reply(200, value)
                     if path == "/interview":
                         return self.reply(200, operations.interview_kit(service.store.get_run(query.get("id", [""])[0])))
                     if path == "/export":
@@ -150,10 +177,19 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     return self.reply(405, {"error": "method_not_allowed"})
                 if identity["role"] == "viewer":
                     return self.reply(403, {"error": "read_only_account"})
-                admin_paths = {"/integrations/greenhouse", "/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
+                admin_paths = {"/automation/retry", "/automation/settings", "/automation/run", "/integrations/greenhouse", "/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
                 if path in admin_paths and identity["role"] != "admin":
                     return self.reply(403, {"error": "admin_required"})
                 _, body = self.read_body()
+                if path == '/automation/settings':
+                    return self.reply(200, self.server.automation.update(body, actor))
+                if path == '/automation/retry':
+                    return self.reply(200, self.server.automation.retry(body.get('id'), actor))
+                if path == '/automation/run':
+                    worker = queue.worker if service.store.backend == 'postgresql' else queue
+                    if not worker or not queue.leader:
+                        raise ConflictError('This instance has no active intake worker; try the leader')
+                    return self.reply(200, self.server.automation.tick(worker, manual=True, actor=actor))
                 if path == "/showcase/load":
                     if service.provider.name != "demo":
                         raise ValueError("Load showcase data only in a demo-mode workspace")
@@ -177,6 +213,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                         parsing.release()
                     request = {"request_id": body.get("request_id"), "role_version": body.get("role_version"), "profile_text": extracted["text"]}
                     metadata = {"kind": "upload", "filename": Path(body["filename"]).name,
+                                "display_name": Path(body["filename"]).name,
                                 "pages": extracted["pages"], "warnings": extracted["warnings"], "malware_scan": extracted.get("malware_scan")}
                     return self.reply(202, queue.submit(request, metadata, actor))
                 if path == "/imports/url":
@@ -200,7 +237,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     finally:
                         parsing.release()
                 if path == "/integrations/sync":
-                    result = sync_feed(queue, config, actor)
+                    settings = self.server.automation.settings()
+                    result = sync_feed(queue, {**config, 'connector_role': settings['role_version'] or config.get('connector_role')}, actor)
                     self.server.last_sync = {"at": operations.now(), "jobs": len(result["jobs"]), "errors": len(result["errors"])}
                     return self.reply(202, result)
                 if path == "/rediscover":
@@ -252,6 +290,8 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
 
     class Server(ThreadingHTTPServer):
         def server_close(self):
+            if hasattr(self, 'automation'):
+                self.automation.stop.set()
             queue.close()
             super().server_close()
             if self.instance_lock:
@@ -268,7 +308,10 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
             instance_lock.close()
         raise
     server.queue = queue
+    server.parsing = parsing
     try:
+        from .automation import Automation
+        server.automation = Automation(server, config)
         queue.start()
     except Exception:
         server.server_close()
@@ -293,6 +336,11 @@ def main():
         if os.getenv("K_SERVICE") and (not database_url or not database_url.startswith(("postgres://", "postgresql://"))):
             raise ValueError("Cloud Run requires a PostgreSQL DATABASE_URL; ephemeral SQLite is disabled")
         service = ScreeningService(Store(database_url or args.db), provider)
+        config['inbox_dir'] = os.getenv('SCREENING_INBOX_DIR')
+        if os.getenv('K_SERVICE') and config['inbox_dir']:
+            raise ValueError('Cloud Run intake uses uploads or configured feeds; local folder watching is disabled')
+        if not config['inbox_dir'] and service.store.backend == 'sqlite':
+            config['inbox_dir'] = str(service.store.path.parent / 'inbox')
         server = make_server(service, os.getenv("SCREENING_API_TOKEN"), args.port, accounts, config, args.host)
         maintenance = Maintenance(server, config)
         maintenance.start()

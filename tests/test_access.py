@@ -71,6 +71,13 @@ class AccessTests(unittest.TestCase):
         self.assertEqual(self.call('/integrations/greenhouse',{},'reviewer')[0],403)
         self.assertEqual(self.call('/integrations/greenhouse',{},'viewer')[0],403)
 
+    def test_automation_controls_require_admin_and_do_not_leak_local_paths(self):
+        for path in ['/automation/settings', '/automation/run', '/automation/retry']:
+            for role in ['reviewer', 'viewer']:
+                self.assertEqual(self.call(path, {}, role)[0], 403)
+        self.assertEqual(self.call('/automation')[0], 200)
+        self.assertIsNone(json.loads(self.call('/automation', identity='reviewer')[1])['inbox_path'])
+
     def test_viewer_cannot_submit(self):
         self.assertEqual(self.call('/jobs',{},'viewer')[0],403)
 

@@ -16,6 +16,36 @@ from screening.database import DatabaseUnavailable
 
 @unittest.skipUnless(os.getenv('TEST_DATABASE_URL'), 'PostgreSQL integration service not configured')
 class PostgreSQLTests(unittest.TestCase):
+    def test_named_schema_isolates_tables_workers_and_reopened_connections(self):
+        from unittest.mock import patch
+        from uuid import uuid4
+        schema = 'recruitment_test_' + uuid4().hex[:12]
+        from psycopg import sql, errors
+        connection = self.store.database.open_raw(autocommit=True)
+        self.addCleanup(connection.close)
+        connection.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
+        self.addCleanup(lambda: connection.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema))))
+        public_ids = seed(self.store)['run_ids']
+        public_lock = self.store.acquire_instance()
+        self.addCleanup(public_lock.close)
+        with patch.dict(os.environ, {'SCREENING_DB_SCHEMA': schema}):
+            isolated = Store(self.url)
+            self.assertEqual(isolated.list_runs(), [])
+            isolated_lock = isolated.acquire_instance()
+            try:
+                seed(isolated)
+                self.assertEqual(len(Store(self.url).list_runs()), 6)
+                isolated.delete_run(public_ids[0], 'admin')
+                self.assertEqual(len(isolated.list_runs()), 5)
+                self.assertEqual(len(self.store.list_runs()), 6)
+                with self.assertRaises(ValueError):
+                    Store(self.url).acquire_instance()
+            finally:
+                isolated_lock.close()
+        with patch.dict(os.environ, {'SCREENING_DB_SCHEMA': 'absent_' + uuid4().hex[:12]}):
+            with self.assertRaisesRegex(ValueError, 'missing or inaccessible'):
+                Store(self.url)
+
     def setUp(self):
         self.url = os.environ['TEST_DATABASE_URL']
         parts = urlsplit(self.url)
@@ -23,7 +53,7 @@ class PostgreSQLTests(unittest.TestCase):
             self.fail('Tests may reset only the dedicated localhost screening_test database')
         self.store = Store(self.url)
         with self.store.connect() as db:
-            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events RESTART IDENTITY')
+            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events, automation_settings, intake_records, automation_events RESTART IDENTITY')
 
     def test_persistence_deduplication_review_and_delete(self):
         keys = seed(self.store)['run_ids']
@@ -141,14 +171,43 @@ class PostgreSQLTests(unittest.TestCase):
             path = Path(folder) / 'old.sqlite3'
             source = Store(path)
             keys = seed(source)['run_ids']
+            settings = json.dumps({'enabled': False, 'revision': 3})
+            with source.connect() as db:
+                db.execute('INSERT INTO automation_settings VALUES (?, ?)', ('intake', settings))
             counts = migrate(path, self.url)
             self.assertEqual(counts['runs'], 6)
+            self.assertEqual(counts['automation_settings'], 1)
+            with Store(self.url).connect() as db:
+                self.assertEqual(db.execute('SELECT document FROM automation_settings WHERE id = ?', ('intake',)).fetchone()[0], settings)
             self.assertEqual(Store(self.url).get_run(keys[0]), source.get_run(keys[0]))
             Store(self.url).audit('admin', 'post_migration', 'system')
             with self.assertRaisesRegex(ValueError, 'empty'):
                 migrate(path, self.url)
             self.assertEqual(len(Store(self.url).list_runs()), 6)
             self.assertEqual(len(source.list_runs()), 6)
+
+    def test_feed_agent_persists_settings_history_and_deduplicates_across_instances(self):
+        from threading import BoundedSemaphore
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from screening.automation import Automation
+        seed(self.store)
+        q = Queue(ScreeningService(self.store, DemoProvider()))
+        config = {'connector_url': 'https://ats.example.com/feed', 'allowed_hosts': {'ats.example.com'}}
+        agent = Automation(SimpleNamespace(queue=q, parsing=BoundedSemaphore(2)), config)
+        agent.update({**agent.settings(), 'enabled': True, 'feed_enabled': True,
+                      'role_version': self.store.list_roles()[0]['role_version']}, 'admin')
+        response = json.dumps({'candidates': [{'external_id': 'fictional-cloud-source', 'profile_text': 'Maintained fictional Linux services.'}]}).encode()
+        with patch('screening.integrations.fetch', return_value=(response, 'application/json')):
+            self.assertEqual(agent.tick(q, manual=True)['queued'], 1)
+            self.assertTrue(q.process_one())
+            fresh = Queue(ScreeningService(Store(self.url), DemoProvider()))
+            second = Automation(SimpleNamespace(queue=fresh, parsing=BoundedSemaphore(2)), config)
+            self.assertTrue(second.settings()['enabled'])
+            second.tick(fresh, manual=True)
+        self.assertEqual(len(fresh.list()), 1)
+        self.assertEqual(fresh.list()[0]['status'], 'completed')
+        self.assertEqual(len(second.snapshot()['events']), 2)
 
     def test_instance_ownership_and_connection_loss_fence_writes(self):
         lock = self.store.acquire_instance()

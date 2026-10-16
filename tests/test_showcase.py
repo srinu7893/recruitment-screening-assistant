@@ -62,8 +62,8 @@ class ShowcaseTests(unittest.TestCase):
 
     def test_generated_showcase_is_current_and_contains_only_fixture_data(self):
         path = Path(__file__).resolve().parents[1] / 'showcase/index.html'
-        expected = path.read_text()
-        self.assertEqual(build().read_text(), expected)
+        expected = path.read_text(encoding='utf-8')
+        self.assertEqual(build().read_text(encoding='utf-8'), expected)
         self.assertNotIn('__SHOWCASE_DATA__', expected)
         raw = expected.split('id="dataset">')[1].split('</script>')[0]
         self.assertEqual(json.loads(raw), export_dataset())

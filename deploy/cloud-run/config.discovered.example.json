@@ -1,0 +1,22 @@
+{
+  "project": "project-c9bd3d0e-266f-47bf-852",
+  "project_number": "52916499838",
+  "region": "us-central1",
+  "service": "recruitment-screening-demo",
+  "repository": "recruitment",
+  "runtime_account": "recruitment-runtime@project-c9bd3d0e-266f-47bf-852.iam.gserviceaccount.com",
+  "public_url": "https://recruitment-screening-demo-fddyka6g2a-uc.a.run.app",
+  "iap_audience": "/projects/52916499838/locations/us-central1/services/recruitment-screening-demo",
+  "database_schema": "recruitment",
+  "provider": "demo",
+  "allowed_hosts": [],
+  "connector_url": "",
+  "connector_role": "",
+  "sync_seconds": 0,
+  "retention_days": 0,
+  "greenhouse_attachment_hosts": "",
+  "secrets": {
+    "DATABASE_URL": {"name": "recruitment-demo-database-url", "version": "1"},
+    "SCREENING_IAP_ACCOUNTS": {"name": "recruitment-demo-iap-accounts", "version": "1"}
+  }
+}

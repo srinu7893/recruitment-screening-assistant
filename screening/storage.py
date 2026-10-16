@@ -24,6 +24,8 @@ class Store:
         serial = 'BIGSERIAL' if self.database.postgres else 'INTEGER'
         ordering = ', rowid BIGSERIAL UNIQUE' if self.database.postgres else ''
         with self.connect() as db:
+            if self.database.postgres and db.execute('SELECT current_schema()').fetchone()[0] != self.database.schema:
+                raise ValueError('Configured recruitment schema is missing or inaccessible; provision it before startup')
             db.executescript(f"""
                 CREATE TABLE IF NOT EXISTS roles (
                     version TEXT PRIMARY KEY, document TEXT NOT NULL{ordering});
@@ -38,6 +40,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS webhook_events (
                     id TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
                 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
+                CREATE TABLE IF NOT EXISTS automation_settings (
+                    id TEXT PRIMARY KEY, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS intake_records (
+                    id TEXT PRIMARY KEY, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS automation_events (
+                    id TEXT PRIMARY KEY, at TEXT NOT NULL, document TEXT NOT NULL);
             """)
 
     def connect(self):
@@ -143,6 +151,13 @@ class Store:
             db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
             db.execute("DELETE FROM jobs WHERE id = ?", (run_id,))
             db.execute("DELETE FROM audit WHERE target = ?", (run_id,))
+            # Keep a deduplication tombstone so a retained inbox file cannot
+            # silently recreate a deliberately deleted review.
+            for key, document in db.execute('SELECT id, document FROM intake_records').fetchall():
+                record = json.loads(document)
+                if record.get('job_id') == run_id:
+                    record.update(filename='[deleted]', job_id='', status='deleted', error=None)
+                    db.execute('UPDATE intake_records SET document = ? WHERE id = ?', (json.dumps(record), key))
             db.execute("INSERT INTO audit(at, actor, action, target) VALUES (?, ?, ?, ?)",
                        (now(), actor, "record_deleted", "redacted"))
 

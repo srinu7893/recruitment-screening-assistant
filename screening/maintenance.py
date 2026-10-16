@@ -35,7 +35,20 @@ class Maintenance:
                     continue
                 queue = queue.worker
             current = time.monotonic()
+            if hasattr(self.server, 'automation'):
+                try:
+                    self.server.automation.tick(queue)
+                    self.server.last_automation_error = None
+                except Exception:
+                    self.server.last_automation_error = 'intake_cycle_failed'
             interval = self.config.get("sync_seconds", 0)
+            if hasattr(self.server, 'automation'):
+                try:
+                    settings = self.server.automation.settings()
+                    if settings['enabled'] and settings['feed_enabled']:
+                        interval = 0  # The intake agent already owns scheduled feed polling.
+                except Exception:
+                    interval = 0
             if interval and current - last_sync >= interval:
                 last_sync = current
                 try:
@@ -54,5 +67,7 @@ class Maintenance:
 
     def close(self):
         self.stop.set()
+        if hasattr(self.server, 'automation'):
+            self.server.automation.stop.set()
         if self.thread:
             self.thread.join(timeout=1)

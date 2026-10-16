@@ -1,7 +1,12 @@
 """Small DB-API boundary for the app's fixed SQL; never accepts user SQL."""
 from contextlib import contextmanager
-import fcntl
+import hashlib
 import os
+import re
+if os.name == 'nt':
+    import msvcrt
+else:
+    import fcntl
 from pathlib import Path
 import sqlite3
 import threading
@@ -13,14 +18,15 @@ class DatabaseUnavailable(RuntimeError):
 
 
 class Connection:
-    def __init__(self, raw, postgres):
+    def __init__(self, raw, postgres, transaction_lock=74628190):
         self.raw, self.postgres = raw, postgres
+        self.transaction_lock = transaction_lock
 
     def execute(self, sql, args=()):
         if self.postgres:
             if sql == 'BEGIN IMMEDIATE':
                 # Serialize read/modify/write transactions, including queue capacity checks.
-                sql = 'SELECT pg_advisory_xact_lock(74628190)'
+                sql, args = 'SELECT pg_advisory_xact_lock(?)', (self.transaction_lock,)
             if sql.startswith('INSERT OR IGNORE INTO '):
                 sql = sql.replace('INSERT OR IGNORE INTO ', 'INSERT INTO ', 1) + ' ON CONFLICT DO NOTHING'
             sql = sql.replace('?', '%s')
@@ -39,14 +45,22 @@ class InstanceLock:
         self.closed = False
         if database.postgres:
             self.raw = database.open_raw(autocommit=True)
-            if not self.raw.execute('SELECT pg_try_advisory_lock(74628191)').fetchone()[0]:
+            if not self.raw.execute('SELECT pg_try_advisory_lock(%s)', (database.worker_lock,)).fetchone()[0]:
                 self.raw.close()
                 raise ValueError('Another server already uses this database; stop it before deploying')
         else:
-            self.raw = open(str(database.path) + '.lock', 'a')
+            self.raw = open(str(database.path) + '.lock', 'a+b')
             try:
-                fcntl.flock(self.raw, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
+                if os.name == 'nt':
+                    self.raw.seek(0, 2)
+                    if not self.raw.tell():
+                        self.raw.write(b'0')
+                        self.raw.flush()
+                    self.raw.seek(0)
+                    msvcrt.locking(self.raw.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    fcntl.flock(self.raw, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
                 self.raw.close()
                 raise ValueError('Another server already uses this database') from None
 
@@ -72,7 +86,17 @@ class Database:
     def __init__(self, location):
         self.postgres = str(location).startswith(('postgres://', 'postgresql://'))
         self.instance_lock = None
+        self.schema = os.getenv('SCREENING_DB_SCHEMA', 'public') if self.postgres else None
+        self.transaction_lock, self.worker_lock = 74628190, 74628191
         if self.postgres:
+            if (not isinstance(self.schema, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', self.schema)
+                    or self.schema.startswith('pg_') or self.schema == 'information_schema'):
+                raise ValueError('SCREENING_DB_SCHEMA must be a lowercase PostgreSQL schema name')
+            if self.schema != 'public':
+                def lock_key(kind):
+                    digest = hashlib.sha256(f'recruitment:{self.schema}:{kind}'.encode()).digest()
+                    return int.from_bytes(digest[:8], 'big', signed=True)
+                self.transaction_lock, self.worker_lock = lock_key('transaction'), lock_key('worker')
             from psycopg.conninfo import conninfo_to_dict
             try:
                 self.parameters = conninfo_to_dict(str(location))
@@ -85,7 +109,7 @@ class Database:
                         raise ValueError()
                     self.parameters.setdefault('sslrootcert', '/etc/ssl/certs/ca-certificates.crt')
                 self.parameters.update(connect_timeout='10', application_name='recruitment-screening',
-                                       options='-c statement_timeout=15000 -c lock_timeout=10000')
+                                       options=f'-c statement_timeout=15000 -c lock_timeout=10000 -c search_path={self.schema}')
             except Exception:
                 raise ValueError('DATABASE_URL must be a direct PostgreSQL URL with sslmode=verify-full for remote hosts') from None
             self.path = None
@@ -117,7 +141,7 @@ class Database:
                     raise DatabaseUnavailable('Database ownership lost; restart the service')
                 try:
                     with lock.raw.transaction():
-                        yield Connection(lock.raw, True)
+                        yield Connection(lock.raw, True, self.transaction_lock)
                 except Exception as exc:
                     import psycopg
                     if isinstance(exc, psycopg.OperationalError):
@@ -131,7 +155,7 @@ class Database:
         raw = self.open_raw()
         try:
             with raw:
-                yield Connection(raw, self.postgres)
+                yield Connection(raw, self.postgres, self.transaction_lock)
         finally:
             raw.close()
 
