@@ -155,6 +155,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     if self.command == 'POST' and not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), session['csrf']):
                         return self.reply(403, {'error': 'invalid_csrf_token'})
                     if self.command == 'POST' and path == '/auth/logout':
+                        self.read_body()
                         auth.logout(self.headers.get('Cookie'))
                         service.store.audit(identity['name'], 'signed_out', 'workspace')
                         return self.reply(200, {'signed_out': True}, auth.cookie('', clear=True))

@@ -16,6 +16,54 @@ from screening.database import DatabaseUnavailable
 
 @unittest.skipUnless(os.getenv('TEST_DATABASE_URL'), 'PostgreSQL integration service not configured')
 class PostgreSQLTests(unittest.TestCase):
+    def test_cloud_smoke_over_https_with_real_database_and_stubbed_scanner(self):
+        """Exercise the deployment checker itself; real scanner has separate CI."""
+        from datetime import datetime, timedelta, timezone
+        from tempfile import TemporaryDirectory
+        from threading import Thread
+        from unittest.mock import patch
+        import ssl
+        from urllib.request import build_opener, HTTPSHandler
+        from cryptography import x509
+        from cryptography.x509.oid import NameOID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from screening.password_auth import hash_password
+        from screening.rules import RulesProvider
+        from screening.server import make_server
+        from scripts.cloud_smoke import smoke
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'localhost')])
+        certificate = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
+                       .serial_number(x509.random_serial_number()).not_valid_before(datetime.now(timezone.utc)-timedelta(minutes=1))
+                       .not_valid_after(datetime.now(timezone.utc)+timedelta(days=1))
+                       .add_extension(x509.SubjectAlternativeName([x509.DNSName('localhost')]), critical=False)
+                       .sign(key, hashes.SHA256()))
+        password = 'synthetic-password-for-https-check'
+        accounts = [{'username':'admin','name':'Admin','role':'admin','password_hash':hash_password(password)}]
+        with TemporaryDirectory() as folder, patch.dict(os.environ, {'SCREENING_AUTH_MODE':'password',
+                'SCREENING_PASSWORD_ACCOUNTS':json.dumps(accounts),'SCREENING_SCAN_MODE':'clamd'}):
+            cert_path, key_path = Path(folder)/'cert.pem', Path(folder)/'key.pem'
+            cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+            key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+            server = make_server(ScreeningService(self.store, RulesProvider()), port=0,
+                                 config={'public_url':'https://localhost','allowed_hosts':set()})
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            context.load_cert_chain(cert_path, key_path)
+            server.socket = context.wrap_socket(server.socket, server_side=True)
+            thread = Thread(target=server.serve_forever, daemon=True); thread.start()
+            client_context = ssl.create_default_context(cafile=str(cert_path))
+            def trusted_opener(*handlers):
+                return build_opener(*handlers, HTTPSHandler(context=client_context))
+            try:
+                with patch('scripts.cloud_smoke.build_opener', side_effect=trusted_opener), patch('screening.documents.scan_upload', return_value={'status':'clean','engine':'clamd'}):
+                    smoke(f'https://localhost:{server.server_port}', 'admin', password)
+                self.assertEqual(self.store.list_runs(), [])
+                with self.store.connect() as db:
+                    self.assertEqual(db.execute('SELECT count(*) FROM login_sessions').fetchone()[0], 0)
+            finally:
+                server.shutdown(); server.server_close(); thread.join()
+
     def test_named_schema_isolates_tables_workers_and_reopened_connections(self):
         from unittest.mock import patch
         from uuid import uuid4

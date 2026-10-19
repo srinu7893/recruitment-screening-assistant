@@ -43,6 +43,8 @@ def smoke(url, username, password):
             raise RuntimeError('Expected rules screening and PostgreSQL')
         if health['identity']['role'] != 'admin':
             raise RuntimeError('Use the configured admin account for the smoke test')
+        if call('/integrations').get('scan_mode') != 'clamd':
+            raise RuntimeError('Production malware scanning is not enabled')
         call('/auth/session')
         call('/roles', {}, expected=403, use_csrf=False)
         role_version = 'deployment-smoke:'+uuid4().hex[:12]
@@ -68,6 +70,9 @@ def smoke(url, username, password):
             time.sleep(2)
         if not run or run['status'] != 'awaiting_review' or run['result']['assessments'][0]['status'] != 'partial':
             raise RuntimeError('Synthetic upload did not produce the expected evidence review')
+        scan = run.get('source', {}).get('metadata', {}).get('malware_scan', {})
+        if scan.get('status') != 'clean' or scan.get('engine') != 'clamd':
+            raise RuntimeError('Synthetic upload has no clean ClamAV verdict')
         run = call('/notes', {'run_id':run_id,'revision':run.get('revision',0),'text':'Synthetic post-deployment verification.'})
         exported = call('/export?id='+run_id)
         if not exported.get('notes'):
