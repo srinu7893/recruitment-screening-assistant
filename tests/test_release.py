@@ -9,6 +9,23 @@ from scripts.cloud_release import validate, manifest, candidate_tag, wait_for_re
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_password_rules_production_manifest(self):
+        self.setUp()
+        c = copy.deepcopy(self.config)
+        c.update(auth_mode='password', provider='rules', tier='production')
+        del c['iap_audience']
+        del c['secrets']['SCREENING_IAP_ACCOUNTS']
+        c['secrets']['SCREENING_PASSWORD_ACCOUNTS'] = {'name':'password-accounts', 'version':'1'}
+        doc = manifest(c, self.image, 'recruitment-new')
+        self.assertEqual(doc['metadata']['annotations']['run.googleapis.com/iap-enabled'], 'false')
+        env = {r['name']:r.get('value') for r in doc['spec']['template']['spec']['containers'][0]['env']}
+        self.assertEqual(env['SCREENING_AUTH_MODE'], 'password')
+        self.assertEqual(env['SCREENING_PROVIDER'], 'rules')
+        self.assertNotIn('SCREENING_IAP_AUDIENCE', env)
+        for changes in [{'provider':'demo'}, {'service':'recruitment-demo'}, {'auth_mode':'none'}]:
+            with self.assertRaises(ValueError):
+                validate({**c, **changes})
+
     def setUp(self):
         self.config={'project':'screening-project','project_number':'123456789012','region':'asia-south1',
                      'service':'recruitment','repository':'recruitment','runtime_account':'runtime@screening-project.iam.gserviceaccount.com',

@@ -21,10 +21,15 @@ def validate(c, require_scanner=True):
     if not public_origin(c.get('public_url')) or 'replace' in c['public_url']:
         raise ValueError('Set the canonical public HTTPS URL')
     expected_audience = f"/projects/{c['project_number']}/locations/{c['region']}/services/{c['service']}"
-    if c.get('iap_audience') != expected_audience:
+    auth_mode = c.get('auth_mode', 'iap')
+    if auth_mode not in ('iap', 'password'):
+        raise ValueError('Auth mode must be iap or password')
+    if auth_mode == 'iap' and c.get('iap_audience') != expected_audience:
         raise ValueError('Set the exact direct Cloud Run IAP audience for this service and region')
-    if c.get('provider') not in ('demo','openai'):
-        raise ValueError('Provider must be demo or openai')
+    if c.get('provider') not in ('demo','rules','openai'):
+        raise ValueError('Provider must be demo, rules or openai')
+    if c.get('tier') == 'production' and (c['provider'] == 'demo' or 'demo' in c['service']):
+        raise ValueError('Production requires a non-demo provider and service name')
     schema = c.get('database_schema', 'public')
     if (not isinstance(schema, str) or not re.fullmatch(r'[a-z][a-z0-9_]{0,62}', schema)
             or schema.startswith('pg_') or schema == 'information_schema'):
@@ -54,7 +59,7 @@ def validate(c, require_scanner=True):
         raise ValueError('Invalid connector_role')
     if c.get('sync_seconds') and (not url or not role):
         raise ValueError('Scheduled feed sync requires connector_url and connector_role')
-    required = {'DATABASE_URL','SCREENING_IAP_ACCOUNTS'}
+    required = {'DATABASE_URL', 'SCREENING_PASSWORD_ACCOUNTS' if auth_mode == 'password' else 'SCREENING_IAP_ACCOUNTS'}
     if c['provider']=='openai':
         required.add('OPENAI_API_KEY')
         if not isinstance(c.get('model'),str) or not c['model'].strip():
@@ -81,8 +86,10 @@ def manifest(c, image, revision, current=None):
         raise ValueError('Use an immutable recruitment image digest from the configured registry')
     if not re.fullmatch(re.escape(c['service'])+r'-[a-z0-9-]{1,40}',revision) or len(revision)>63:
         raise ValueError('Invalid revision name')
-    env={'SCREENING_PUBLIC_URL':c['public_url'],'SCREENING_AUTH_MODE':'iap',
-         'SCREENING_SCAN_MODE':'clamd','GREENHOUSE_ATTACHMENT_HOSTS':c.get('greenhouse_attachment_hosts',''),'SCREENING_IAP_AUDIENCE':c['iap_audience'],'SCREENING_PROVIDER':c['provider']}
+    env={'SCREENING_PUBLIC_URL':c['public_url'],'SCREENING_AUTH_MODE':c.get('auth_mode', 'iap'),
+         'SCREENING_SCAN_MODE':'clamd','GREENHOUSE_ATTACHMENT_HOSTS':c.get('greenhouse_attachment_hosts',''),'SCREENING_PROVIDER':c['provider']}
+    if c.get('auth_mode', 'iap') == 'iap':
+        env['SCREENING_IAP_AUDIENCE'] = c['iap_audience']
     env.update(SCREENING_DB_SCHEMA=c.get('database_schema', 'public'),
                SCREENING_ALLOWED_HOSTS=','.join(c.get('allowed_hosts', [])),
                SCREENING_CONNECTOR_URL=c.get('connector_url', ''),
@@ -112,7 +119,7 @@ def manifest(c, image, revision, current=None):
     return {'apiVersion':'serving.knative.dev/v1','kind':'Service',
         'metadata':{'name':c['service'],'namespace':c['project_number'],
                     'labels':{'cloud.googleapis.com/location':c['region']},
-                    'annotations':{'run.googleapis.com/ingress':'all','run.googleapis.com/iap-enabled':'true',
+                    'annotations':{'run.googleapis.com/ingress':'all','run.googleapis.com/iap-enabled':'true' if c.get('auth_mode', 'iap') == 'iap' else 'false',
                                    'run.googleapis.com/minScale':'1','run.googleapis.com/maxScale':'3'}},
         'spec':{'template':{'metadata':{'name':revision,'annotations':{'run.googleapis.com/cpu-throttling':'false',
                                       'autoscaling.knative.dev/minScale':'1',
@@ -202,7 +209,7 @@ def deploy(c,image,revision,directory):
                 print('Could not remove candidate tag; inspect its minimum-instance allocation.', flush=True)
         raise
     (directory/'result.json').write_text(json.dumps({'revision':revision,'url':c['public_url'],'ready':True,
-        'note':'Complete authenticated IAP and resume upload smoke test after deployment.'},indent=2))
+        'note':'Complete authenticated login and resume upload smoke test after deployment.'},indent=2))
 
 
 def main():

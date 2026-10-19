@@ -1,6 +1,6 @@
 {
   "name": "recruitment-screening-assistant-ui-tests",
   "private": true,
-  "scripts": {"test:ui": "node tests/ui-smoke.cjs", "test:showcase": "node tests/ui-showcase.cjs", "test:automation": "node tests/ui-automation.cjs"},
+  "scripts": {"test:ui": "node tests/ui-smoke.cjs", "test:showcase": "node tests/ui-showcase.cjs", "test:automation": "node tests/ui-automation.cjs", "test:password": "node tests/ui-password.cjs"},
   "devDependencies": {"playwright": "1.62.1"}
 }

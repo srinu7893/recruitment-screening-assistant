@@ -42,15 +42,18 @@ class IAPAuth:
             return None
 
 
-def configured_auth(token, accounts):
+def configured_auth(token, accounts, store=None, secure=False):
     from .auth import Auth
     mode = os.getenv('SCREENING_AUTH_MODE', 'token')
     if mode == 'token':
         auth = Auth(token, accounts)
         auth.mode = 'token'
         return auth
+    if mode == 'password':
+        from .password_auth import PasswordAuth
+        return PasswordAuth(store, json.loads(os.getenv('SCREENING_PASSWORD_ACCOUNTS', '[]')), secure)
     if mode != 'iap':
-        raise ValueError('SCREENING_AUTH_MODE must be token or iap')
+        raise ValueError('SCREENING_AUTH_MODE must be token, password or iap')
     try:
         mapping = json.loads(os.getenv('SCREENING_IAP_ACCOUNTS', '[]'))
     except ValueError:

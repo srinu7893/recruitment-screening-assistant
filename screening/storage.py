@@ -39,6 +39,10 @@ class Store:
                     action TEXT NOT NULL, target TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS webhook_events (
                     id TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
+                CREATE TABLE IF NOT EXISTS login_sessions (
+                    id TEXT PRIMARY KEY, expires DOUBLE PRECISION NOT NULL, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    id TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires DOUBLE PRECISION NOT NULL);
                 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
                 CREATE TABLE IF NOT EXISTS automation_settings (
                     id TEXT PRIMARY KEY, document TEXT NOT NULL);
