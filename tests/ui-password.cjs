@@ -1,6 +1,6 @@
 /* Real browser: password login, cookie restoration, rules upload, logout. */
 const {chromium}=require('playwright');
-const {spawn}=require('node:child_process');
+const {spawn,spawnSync}=require('node:child_process');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const assert=require('node:assert/strict');
 (async()=>{
@@ -9,7 +9,7 @@ const assert=require('node:assert/strict');
  const salt=crypto.randomBytes(16);
  const digest=crypto.pbkdf2Sync(password,salt,600000,32,'sha256').toString('hex');
  const accounts=JSON.stringify([{username:'admin',name:'Administrator',role:'admin',password_hash:`pbkdf2_sha256$600000$${salt.toString('hex')}$${digest}`}]);
- const server=spawn(process.env.PYTHON||'python',['-m','screening.server','--provider','rules','--db',path.join(directory,'app.sqlite3'),'--port','18767'],{env:{...process.env,SCREENING_AUTH_MODE:'password',SCREENING_PASSWORD_ACCOUNTS:accounts},stdio:['ignore','pipe','pipe']});
+ const server=spawn(process.env.PYTHON||'python',['-m','screening.server','--provider','rules','--db',path.join(directory,'app.sqlite3'),'--port','18767'],{env:{...process.env,SCREENING_AUTH_MODE:'password',SCREENING_PASSWORD_ACCOUNTS:accounts,DATABASE_URL:'',K_SERVICE:'',SCREENING_SCAN_MODE:'off',SCREENING_INBOX_DIR:'',SCREENING_PUBLIC_URL:'',SCREENING_SYNC_SECONDS:'0'},stdio:['ignore','pipe','pipe']});
  let browser;
  try{
   await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Startup timeout')),15000);server.stdout.on('data',chunk=>{if(String(chunk).includes('Recruiter workspace:')){clearTimeout(timer);resolve();}});server.on('exit',code=>{clearTimeout(timer);reject(Error('Server exited '+code));});});
@@ -43,5 +43,14 @@ const assert=require('node:assert/strict');
   assert.equal(await page.evaluate(async()=>(await fetch('/health')).status),401);
   assert.deepEqual(errors,[]);
   console.log('Password browser acceptance passed: invalid password, login, refresh, rules upload, evidence review, logout.');
- }finally{if(browser)await browser.close();server.kill('SIGTERM');await new Promise(resolve=>server.exitCode!==null?resolve():server.once('exit',resolve));fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:200});}
+ }finally{
+  if(browser)await browser.close();
+  if(server.exitCode===null){
+   // Windows virtualenv launchers can leave their Python child holding SQLite.
+   if(process.platform==='win32')spawnSync(path.join(process.env.SystemRoot||'C:\\Windows','System32','taskkill.exe'),['/PID',String(server.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+   else server.kill('SIGTERM');
+   await new Promise(resolve=>server.exitCode!==null?resolve():server.once('exit',resolve));
+  }
+  fs.rmSync(directory,{recursive:true,force:true,maxRetries:20,retryDelay:200});
+ }
 })().catch(error=>{console.error(error);process.exit(1);});

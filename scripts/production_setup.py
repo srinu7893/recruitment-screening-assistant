@@ -94,7 +94,9 @@ def main():
         env = {v['name']:v.get('value') for v in (web or {}).get('env',[])}
         annotations = service['metadata'].get('annotations',{})
         if (not web or env.get('SCREENING_AUTH_MODE') != 'password' or env.get('SCREENING_PROVIDER') != 'rules'
+                or env.get('SCREENING_DB_SCHEMA') != SCHEMA
                 or env.get('SCREENING_PUBLIC_URL') != status['url'] or annotations.get('run.googleapis.com/iap-enabled') == 'true'
+                or sum(t.get('percent', 0) for t in status.get('traffic', [])) != 100
                 or not all(t.get('revisionName') == revision for t in status.get('traffic',[]) if t.get('percent',0))):
             raise SystemExit('Refusing publication: ready production revision, password login, rules mode and matching URL are required')
         print('Verified deployed configuration. Enabling access to the application login page...',flush=True)
