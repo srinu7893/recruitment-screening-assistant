@@ -53,7 +53,22 @@ class PostgreSQLTests(unittest.TestCase):
             self.fail('Tests may reset only the dedicated localhost screening_test database')
         self.store = Store(self.url)
         with self.store.connect() as db:
-            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events, automation_settings, intake_records, automation_events RESTART IDENTITY')
+            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events, automation_settings, intake_records, automation_events, login_sessions, login_attempts RESTART IDENTITY')
+
+    def test_password_sessions_and_rate_limits_shared_across_instances(self):
+        from screening.password_auth import PasswordAuth, hash_password
+        account = {'username':'admin','name':'Admin','role':'admin','password_hash':hash_password('long-test-password-for-postgres')}
+        first = PasswordAuth(self.store, [account], True)
+        second = PasswordAuth(Store(self.url), [account], True)
+        (token, session), error = first.login('admin', 'long-test-password-for-postgres')
+        self.assertIsNone(error)
+        cookie = first.cookie(token)
+        self.assertEqual(second.session(cookie), session)
+        second.logout(cookie)
+        self.assertIsNone(first.session(cookie))
+        for _ in range(4):
+            first.login('admin', 'incorrect')
+        self.assertEqual(second.login('admin', 'long-test-password-for-postgres')[1], 'rate_limited')
 
     def test_persistence_deduplication_review_and_delete(self):
         keys = seed(self.store)['run_ids']

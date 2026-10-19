@@ -21,6 +21,8 @@ from .integrations import (read_url, csv_records, import_records, sync_feed,
 from .jobs import Queue
 from . import operations
 from .providers import DemoProvider, OpenAIProvider
+from .rules import RulesProvider
+import hmac
 from .storage import ConflictError, Store
 from .database import DatabaseUnavailable
 from .deployment import public_origin, allowed_request
@@ -31,9 +33,11 @@ STATIC = Path(__file__).with_name("static")
 
 
 def make_server(service, token=None, port=8000, accounts=None, config=None, host="127.0.0.1"):
-    auth = configured_auth(token, accounts)
     config = config or {"allowed_hosts": set()}
     external = public_origin(config.get("public_url"))
+    if os.getenv('K_SERVICE') and os.getenv('SCREENING_AUTH_MODE') == 'password' and not external:
+        raise ValueError('Password login on Cloud Run requires SCREENING_PUBLIC_URL')
+    auth = configured_auth(token, accounts, service.store, bool(external))
     limiter = RateLimit()
     parsing = BoundedSemaphore(2)
     queue = Queue(service)
@@ -46,18 +50,20 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
             super().setup()
             self.connection.settimeout(150)
 
-        def send(self, status, body, mime="application/json; charset=utf-8"):
+        def send(self, status, body, mime="application/json; charset=utf-8", cookie=None):
             self.send_response(status)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if cookie:
+                self.send_header('Set-Cookie', cookie)
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'")
             self.end_headers()
             self.wfile.write(body)
 
-        def reply(self, status, value):
+        def reply(self, status, value, cookie=None):
             # On Windows, closing a socket with unread POST data can reset the
             # connection before a 401/403 response reaches the client. Drain only
             # bounded bodies, with a short total deadline, without parsing them.
@@ -76,7 +82,7 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     pass
                 finally:
                     self.connection.settimeout(150)
-            self.send(status, json.dumps(value).encode())
+            self.send(status, json.dumps(value).encode(), cookie=cookie)
 
         def read_body(self):
             if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
@@ -117,6 +123,16 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                                       "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                                       "/style.css": ("style.css", "text/css; charset=utf-8")}[path]
                     return self.send(200, (STATIC / filename).read_bytes(), mime)
+                if auth.mode == 'password' and path == '/auth/login' and self.command == 'POST':
+                    if int(self.headers.get('Content-Length', '0')) > 4096:
+                        raise ValueError('Login request too large')
+                    _, body = self.read_body()
+                    result, error = auth.login(body.get('username'), body.get('password'))
+                    if error:
+                        return self.reply(429 if error == 'rate_limited' else 401, {'error': error})
+                    token, session = result
+                    auth.logout(self.headers.get('Cookie'))
+                    return self.reply(200, {'identity': session['identity'], 'csrf': session['csrf']}, auth.cookie(token))
                 if path == "/webhooks/profiles" and self.command == "POST":
                     if not limiter.allow("webhook", 30):
                         return self.reply(429, {"error": "rate_limited"})
@@ -128,10 +144,20 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     if not result["errors"]:
                         claim_webhook(service.store, event_id)
                     return self.reply(202, result)
-                identity = (auth.identify_assertion(self.headers.get("X-Goog-IAP-JWT-Assertion", ""))
+                session = auth.session(self.headers.get('Cookie')) if auth.mode == 'password' else None
+                identity = (session['identity'] if session else None) if auth.mode == 'password' else (auth.identify_assertion(self.headers.get("X-Goog-IAP-JWT-Assertion", ""))
                             if auth.mode == 'iap' else auth.identify(self.headers.get("Authorization", "")))
                 if not identity:
                     return self.reply(401, {"error": "unauthorized"})
+                if auth.mode == 'password':
+                    if self.command == 'GET' and path == '/auth/session':
+                        return self.reply(200, {'identity': identity, 'csrf': session['csrf']})
+                    if self.command == 'POST' and not hmac.compare_digest(self.headers.get('X-CSRF-Token', ''), session['csrf']):
+                        return self.reply(403, {'error': 'invalid_csrf_token'})
+                    if self.command == 'POST' and path == '/auth/logout':
+                        auth.logout(self.headers.get('Cookie'))
+                        service.store.audit(identity['name'], 'signed_out', 'workspace')
+                        return self.reply(200, {'signed_out': True}, auth.cookie('', clear=True))
                 actor = identity["name"]
                 if not limiter.allow(actor + ":" + self.command, 600 if self.command == "GET" else 60):
                     return self.reply(429, {"error": "rate_limited"})
@@ -321,14 +347,14 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
 
 def main():
     parser = argparse.ArgumentParser(description="Recruiter workspace")
-    parser.add_argument("--provider", choices=["demo", "openai"], default=os.getenv("SCREENING_PROVIDER", "demo"))
+    parser.add_argument("--provider", choices=["demo", "rules", "openai"], default=os.getenv("SCREENING_PROVIDER", "demo"))
     parser.add_argument("--db", default="data/screening.sqlite3")
     parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")))
     parser.add_argument("--host", choices=["127.0.0.1", "0.0.0.0"], default="127.0.0.1")
     args = parser.parse_args()
     from .maintenance import Maintenance
     try:
-        provider = DemoProvider() if args.provider == "demo" else OpenAIProvider()
+        provider = {'demo': DemoProvider, 'rules': RulesProvider, 'openai': OpenAIProvider}[args.provider]()
         accounts = json.loads(os.environ["SCREENING_ACCOUNTS"]) if os.getenv("SCREENING_ACCOUNTS") else None
         config = config_from_env()
         config["public_url"] = os.getenv("SCREENING_PUBLIC_URL")
