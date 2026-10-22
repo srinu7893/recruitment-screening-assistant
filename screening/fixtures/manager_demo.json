@@ -1,0 +1,21 @@
+{
+  "role": {
+    "role_version": "manager-demo-support:v1",
+    "title": "DEMO ONLY - Production Support Engineer L2",
+    "approved_by": "Fictional demonstration fixture",
+    "criteria": [
+      {"id":"linux","description":"Hands-on support using \"Linux\"","required":true,"question":"Describe a specific service incident and the commands you used."},
+      {"id":"sql","description":"Troubleshooting using \"SQL\"","required":true,"question":"Explain a query you used to investigate a production issue."},
+      {"id":"incident","description":"Experience with \"incident management\"","required":true,"question":"What was your personal role during an incident and its follow-up?"},
+      {"id":"python","description":"Automation using \"Python\"","required":false,"question":"Which support task did you automate and how did you validate it?"},
+      {"id":"docker","description":"Operational exposure to \"Docker\"","required":false,"question":"Describe your hands-on container troubleshooting experience."}
+    ]
+  },
+  "profiles": [
+    {"id":"DEMO-101","name":"Alex Morgan","scenario":"Broad evidence mentions","expected_mentions":5,"text":"FICTIONAL DEMONSTRATION RESUME - DEMO-101 - Alex Morgan\nNot a real applicant. For manager demonstration only.\nTarget: Production Support Engineer\nExperience: Supported a fictional retail payments service.\nUsed Linux logs and service commands to investigate failed requests.\nUsed SQL queries to trace transaction reconciliation issues.\nOwned incident management coordination for fictional service interruptions.\nBuilt Python scripts to summarize recurring support alerts.\nInspected Docker container logs and restarted a test service.\nInterview follow-up: confirm personal contribution, depth and scope.\n"},
+    {"id":"DEMO-102","name":"Sam Rivera","scenario":"Core support evidence; preferred gaps","expected_mentions":3,"text":"FICTIONAL DEMONSTRATION RESUME - DEMO-102 - Sam Rivera\nNot a real applicant. For manager demonstration only.\nExperience: Supported a fictional order processing application.\nUsed Linux commands to investigate application logs.\nWrote SQL queries to identify mismatched orders.\nParticipated in incident management handovers and follow-up notes.\nAutomated routine spreadsheet reports using a desktop macro tool.\nInterview follow-up: clarify scripting and container exposure.\n"},
+    {"id":"DEMO-103","name":"Taylor Chen","scenario":"Adjacent engineering evidence; required gaps","expected_mentions":2,"text":"FICTIONAL DEMONSTRATION RESUME - DEMO-103 - Taylor Chen\nNot a real applicant. For manager demonstration only.\nExperience: Built a fictional internal reporting application.\nUsed Python for data transformations and test utilities.\nWrote SQL queries to populate weekly reports.\nCollaborated with product designers on dashboard requirements.\nInterview follow-up: clarify operational support experience.\n"},
+    {"id":"DEMO-104","name":"Jordan Blake","scenario":"No literal evidence for this role","expected_mentions":0,"text":"FICTIONAL DEMONSTRATION RESUME - DEMO-104 - Jordan Blake\nNot a real applicant. For manager demonstration only.\nExperience: Created fictional marketing campaign illustrations.\nPrepared storyboards, typography systems and print layouts.\nCoordinated creative reviews with a design team.\nInterview follow-up: missing evidence is not an automatic rejection.\n"},
+    {"id":"DEMO-105","name":"Casey Patel","scenario":"Negated mentions show why human review matters","expected_mentions":2,"text":"FICTIONAL DEMONSTRATION RESUME - DEMO-105 - Casey Patel\nNot a real applicant. For manager demonstration only.\nExperience: Completed classroom exercises for a fictional help desk.\nNo hands-on Docker experience; only watched an introductory lesson.\nNo production Python work; copied one tutorial exercise.\nTracked example tickets in a training workbook.\nInterview follow-up: quoted mentions do not establish competence.\n"}
+  ]
+}

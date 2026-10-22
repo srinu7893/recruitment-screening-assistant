@@ -61,6 +61,14 @@ class PostgreSQLTests(unittest.TestCase):
                 self.assertEqual(self.store.list_runs(), [])
                 with self.store.connect() as db:
                     self.assertEqual(db.execute('SELECT count(*) FROM login_sessions').fetchone()[0], 0)
+                from scripts.seed_manager_demo import seed as seed_manager
+                with patch('scripts.seed_manager_demo.build_opener', side_effect=trusted_opener), patch('screening.documents.scan_upload', return_value={'status':'clean','engine':'clamd'}):
+                    seed_manager(f'https://localhost:{server.server_port}', 'admin', password)
+                    seed_manager(f'https://localhost:{server.server_port}', 'admin', password)
+                runs = self.store.list_runs()
+                self.assertEqual(len(runs), 5)
+                self.assertTrue(all(len(run.get('notes', [])) == 1 for run in runs))
+                self.assertTrue(all('FICTIONAL' in run['source']['metadata']['filename'] for run in runs))
             finally:
                 server.shutdown(); server.server_close(); thread.join()
 
