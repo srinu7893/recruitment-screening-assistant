@@ -38,6 +38,17 @@ def build(output=None):
     presentation = template.replace('<!--PROFILE_ROWS-->',rows).replace('__FIXTURE_BASE64__',fixture)
     (output/'manager-presentation.html').write_text(presentation,encoding='utf-8')
     (ROOT/'docs/manager-demo/presentation.html').write_text(presentation,encoding='utf-8')
+    for source, target in [('docs/manager-demo/README.md', 'DEMO-GUIDE.md'),
+                           ('docs/manager-demo/PROCESS.md', 'SIMPLE-PROCESS.md'),
+                           ('docs/PLAN.md', 'FEATURE-ROADMAP.md'),
+                           ('docs/PRODUCT_REVIEW.md', 'PRODUCT-REVIEW.md')]:
+        content = (ROOT/source).read_text(encoding='utf-8')
+        links = {'../PRODUCT_REVIEW.md':'PRODUCT-REVIEW.md', '../PLAN.md':'FEATURE-ROADMAP.md',
+                 'manager-demo/PROCESS.md':'SIMPLE-PROCESS.md', 'PRODUCT_REVIEW.md':'PRODUCT-REVIEW.md',
+                 '(PROCESS.md)':'(SIMPLE-PROCESS.md)', '(README.md)':'(DEMO-GUIDE.md)'}
+        for before, after in links.items():
+            content = content.replace(before, after)
+        (output/target).write_text(content,encoding='utf-8')
     print('Built manager HTML presentation and five fictional resumes in PDF and TXT: '+str(output))
     return output
 

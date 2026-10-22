@@ -1,5 +1,9 @@
 # Manager demonstration kit
 
+Start with [PROCESS.md](PROCESS.md) for the five-step walkthrough. The reviewed
+feature priorities are in [../PLAN.md](../PLAN.md); specific findings and scope
+are in [../PRODUCT_REVIEW.md](../PRODUCT_REVIEW.md).
+
 The application is suitable for a presenter-led demonstration of its verified
 workflow. It is a literal evidence assistant, with human review; do not present
 it as semantic qualification assessment, automated ranking or autonomous hiring.
