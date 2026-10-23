@@ -28,6 +28,7 @@ const assert=require('node:assert/strict');
   await page.click('#clear-recovery');assert.equal(await page.locator('#account-recovery-output').textContent(),'');
   await page.click('#operations-check');await page.waitForFunction(()=>document.getElementById('operations-status').textContent.includes('"database": "connected"'));
   fs.mkdirSync('test-results',{recursive:true});await page.screenshot({path:'test-results/team-operations.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.setViewportSize({width:1440,height:1000});
   await page.click('#logout');await page.locator('#login:not([hidden])').waitFor();await page.locator('#recovery-panel:not([hidden])').waitFor();await page.locator('#recovery-panel summary').click();
   await page.fill('#recovery-user','reviewer');await page.fill('#recovery-code',code);await page.fill('#recovery-password',replacement);await page.click('#recovery-form button');await page.getByText('Password updated. Sign in with your new password.',{exact:true}).waitFor();
   await login('reviewer',replacement);await page.click('[data-tab="team"]');assert.equal(await page.locator('#team-admin').isVisible(),false);
