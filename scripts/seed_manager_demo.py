@@ -45,7 +45,7 @@ def seed(url, username, password):
             key = 'manager-demo-v1-'+profile['id'].lower()
             status,saved=call('/runs?id='+quote(key),expected=(200,404))
             if status==200:
-                if saved['role_version']!=role['role_version'] or saved['source']['text']!=profile['text']:
+                if saved['role_version']!=role['role_version'] or saved['source']['text'].strip()!=profile['text'].strip():
                     raise RuntimeError('An existing demo ID contains different data; no record was replaced')
                 if saved['status'] not in ('awaiting_review','completed'):
                     raise RuntimeError('An existing demo run needs attention. Retry it from processing jobs before loading again.')

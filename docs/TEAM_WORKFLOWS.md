@@ -70,6 +70,9 @@ changes are stored as PostgreSQL overrides and persist across replicas/restarts.
 Once an account has an override, changing the bootstrap secret does not replace
 its managed password. Use the account UI or the recovery process below.
 Existing sessions from the earlier version are invalidated once on upgrade.
+Prefer roll-forward fixes after managed account changes: older application
+binaries do not enforce these database account overrides. A restore/cutover must
+also review recovered account access and credentials before opening the service.
 
 ## 4. Recover a password
 

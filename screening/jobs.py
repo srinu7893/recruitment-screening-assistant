@@ -27,7 +27,10 @@ class Queue:
         for field in ("request_id", "role_version"):
             text(request[field], field, 120)
         text(request["profile_text"], "profile_text", MAX_PROFILE_CHARS)
-        self.store.get_role(request["role_version"])
+        if _db is None:
+            self.store.get_role(request["role_version"])
+        elif not _db.execute('SELECT 1 FROM roles WHERE version = ?', (request['role_version'],)).fetchone():
+            raise KeyError('Role not found')
         metadata = metadata or {}
         fingerprint = hashlib.sha256(json.dumps({"request": request, "metadata": metadata,
             "provider": self.service.provider.name, "model": self.service.provider.model}, sort_keys=True).encode()).hexdigest()
