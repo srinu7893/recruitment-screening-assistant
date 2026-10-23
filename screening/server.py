@@ -133,6 +133,12 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     token, session = result
                     auth.logout(self.headers.get('Cookie'))
                     return self.reply(200, {'identity': session['identity'], 'csrf': session['csrf']}, auth.cookie(token))
+                if auth.mode == 'password' and path == '/auth/recover' and self.command == 'POST':
+                    if int(self.headers.get('Content-Length','0'))>4096:
+                        raise ValueError('Recovery request too large')
+                    auth.throttle('password-recovery',10)
+                    _, body=self.read_body()
+                    return self.reply(200,auth.recover(body.get('username'),body.get('code'),body.get('password')))
                 if path == "/webhooks/profiles" and self.command == "POST":
                     if not limiter.allow("webhook", 30):
                         return self.reply(429, {"error": "rate_limited"})
@@ -159,10 +165,22 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                         auth.logout(self.headers.get('Cookie'))
                         service.store.audit(identity['name'], 'signed_out', 'workspace')
                         return self.reply(200, {'signed_out': True}, auth.cookie('', clear=True))
+                    if self.command == 'POST' and path == '/auth/change-password':
+                        _,body=self.read_body()
+                        result=auth.change_password(session['username'],body.get('current_password'),body.get('password'))
+                        return self.reply(200,result,auth.cookie('',clear=True))
                 actor = identity["name"]
                 if not limiter.allow(actor + ":" + self.command, 600 if self.command == "GET" else 60):
                     return self.reply(429, {"error": "rate_limited"})
                 if self.command == "GET":
+                    if path in ('/accounts','/operations/status'):
+                        if identity['role']!='admin':
+                            return self.reply(403,{'error':'admin_required'})
+                        if path=='/accounts':
+                            return self.reply(200,{'enabled':auth.mode=='password',
+                                                   'accounts':auth.public_accounts() if auth.mode=='password' else []})
+                        from .monitoring import snapshot
+                        return self.reply(200,snapshot(service.store,queue))
                     if path == "/health":
                         return self.reply(200, {"status": "ok", "provider": service.provider.name,
                                                "identity": identity, "auth_mode": auth.mode, "demo": service.provider.name == "demo",
@@ -204,10 +222,41 @@ def make_server(service, token=None, port=8000, accounts=None, config=None, host
                     return self.reply(405, {"error": "method_not_allowed"})
                 if identity["role"] == "viewer":
                     return self.reply(403, {"error": "read_only_account"})
-                admin_paths = {"/automation/retry", "/automation/settings", "/automation/run", "/integrations/greenhouse", "/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
+                admin_paths = {"/accounts", "/operations/check", "/roles/preview", "/jobs/retry", "/automation/retry", "/automation/settings", "/automation/run", "/integrations/greenhouse", "/roles", "/delete", "/retention", "/integrations/sync", "/jobs/cancel", "/showcase/load"}
                 if path in admin_paths and identity["role"] != "admin":
                     return self.reply(403, {"error": "admin_required"})
                 _, body = self.read_body()
+                if path=='/accounts':
+                    if auth.mode!='password':
+                        raise ValueError('Account administration requires password login')
+                    return self.reply(200,auth.manage(session['username'],body))
+                if path=='/roles/preview':
+                    from .rules import preview
+                    role=body.get('role')
+                    if not isinstance(role,dict):
+                        raise ValueError('Provide a draft role')
+                    role={**role,'approved_by':actor}
+                    profile=body.get('profile_text','')
+                    if not isinstance(profile,str) or len(profile)>50000:
+                        raise ValueError('Preview text must be at most 50000 characters')
+                    return self.reply(200,preview(role,profile))
+                if path=='/jobs/retry':
+                    return self.reply(202,queue.retry(text(body.get('id'),'job id',120),actor))
+                if path=='/operations/check':
+                    from .monitoring import snapshot
+                    from .scanning import check_signatures
+                    result=snapshot(service.store,queue)
+                    if os.getenv('SCREENING_SCAN_MODE','clamd' if os.getenv('K_SERVICE') else 'off')=='clamd':
+                        try:
+                            check_signatures()
+                            result['scanner']='available_with_fresh_signatures'
+                        except ValueError:
+                            result['scanner']='unavailable_or_stale'
+                            result['warnings'].append('scanner_unavailable_or_stale')
+                            result['severity']='WARNING'
+                    else:
+                        result['scanner']='disabled_in_development'
+                    return self.reply(200,result)
                 if path == '/automation/settings':
                     return self.reply(200, self.server.automation.update(body, actor))
                 if path == '/automation/retry':

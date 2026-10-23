@@ -1,5 +1,23 @@
 # Application status and next work
 
+## Team workflow release — 23 October 2026
+
+The following is implemented in code and under release validation. It is not
+marked live until the Cloud Run workflow and post-deployment checks pass.
+
+| Requested item | Implementation | Remaining external step |
+| --- | --- | --- |
+| Easier matching | Separate phrase fields, empty-phrase warning/approval guard and unsaved sample preview; quoted legacy roles preserved | Deploy the release |
+| Available sources | Unavailable folder/feed controls hidden; schedule disabled without a source; uploads remain independent | Deploy the release |
+| Individual accounts and recovery | Admin create/update/disable, last-admin guard, password change, one-use 15-minute recovery, operator emergency recovery | Deploy; use individual accounts; email delivery is not part of this release |
+| Errors and retry | Readable errors, explicit linked retries, duplicate-click protection, source preservation before a run exists | Deploy and check a synthetic failed-job retry |
+| Real source | Approved-feed configuration CLI and existing ingestion/deduplication | Supply an approved URL and credential reference; deploy and verify a real import |
+| Operations | Worker heartbeat, queue/scanner checks, content-free logs, alert installer, encrypted backup, isolated restore drill and synthetic workload client | Supply a notification channel; verify actual delivery and run the Neon/cloud drills |
+
+See [TEAM_WORKFLOWS.md](TEAM_WORKFLOWS.md) for the exact user and Cloud Shell steps.
+The dated review below records the earlier live baseline; its development
+backlog is superseded by this release-status table.
+
 Reviewed against the code and reported deployment results on 22 October 2026.
 This replaces the older phase plan, which still marked deployed features pending.
 

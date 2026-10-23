@@ -1,6 +1,8 @@
 """Optional scheduled feed synchronization and retention, disabled by default."""
 from threading import Event, Thread
 import time
+import os
+import json
 
 from .integrations import sync_feed
 from .operations import expire
@@ -27,14 +29,30 @@ class Maintenance:
     def loop(self):
         last_sync = 0
         last_retention = 0
+        last_report = time.monotonic()
         while not self.stop.is_set():
             queue = self.server.queue
+            current = time.monotonic()
+            if os.getenv('K_SERVICE') and current-last_report>=60:
+                from .monitoring import snapshot
+                try:
+                    report=snapshot(queue.store,queue)
+                    if os.getenv('SCREENING_SCAN_MODE','clamd')=='clamd':
+                        from .scanning import check_signatures
+                        try:
+                            check_signatures()
+                        except ValueError:
+                            report['warnings'].append('scanner_unavailable_or_stale')
+                            report['severity']='WARNING'
+                except Exception:
+                    report={'event':'screening_operations','severity':'WARNING','warnings':['operations_database_unavailable']}
+                print(json.dumps(report),flush=True)
+                last_report=current
             if queue.store.backend == 'postgresql':
                 if not queue.leader or not queue.worker:
                     self.stop.wait(1)
                     continue
                 queue = queue.worker
-            current = time.monotonic()
             if hasattr(self.server, 'automation'):
                 try:
                     self.server.automation.tick(queue)

@@ -5,6 +5,7 @@ from pathlib import Path
 from .storage import Store
 
 TABLES = {
+    'workspace_accounts': ('username', 'document'),
     'roles': ('version', 'document'),
     'runs': ('id', 'fingerprint', 'document'),
     'jobs': ('id', 'fingerprint', 'status', 'document'),

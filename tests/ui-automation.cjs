@@ -6,6 +6,7 @@ const os=require('node:os');
 const path=require('node:path');
 const crypto=require('node:crypto');
 const assert=require('node:assert/strict');
+const stopServer=require('./stop-server.cjs');
 (async()=>{
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'screening-agent-'));
  const inbox=path.join(directory,'inbox');fs.mkdirSync(inbox);
@@ -15,7 +16,7 @@ const assert=require('node:assert/strict');
   server=spawn(process.env.PYTHON||'python',['-m','screening.server','--db',path.join(directory,'app.sqlite3'),'--port','18766','--provider','demo'],{env:{...process.env,SCREENING_API_TOKEN:token,SCREENING_INBOX_DIR:inbox,SCREENING_SCAN_MODE:'off',SCREENING_AUTH_MODE:'token',SCREENING_ACCOUNTS:'',DATABASE_URL:'',K_SERVICE:'',SCREENING_SYNC_SECONDS:'0'},stdio:['ignore','pipe','pipe']});
   await new Promise((resolve,reject)=>{let stderr='';const timer=setTimeout(()=>reject(Error('Agent server startup timed out: '+stderr)),15000);server.stderr.on('data',c=>stderr+=c);server.on('error',reject);server.once('exit',code=>{clearTimeout(timer);reject(Error('Agent server exited '+code+': '+stderr));});server.stdout.on('data',c=>{if(String(c).includes('Recruiter workspace:')){clearTimeout(timer);resolve();}});});
  }
- async function stop(){if(!server||server.exitCode!==null)return;server.kill('SIGTERM');await new Promise(resolve=>server.once('exit',resolve));}
+ async function stop(){await stopServer(server);}
  function resume(name,text){const p=path.join(inbox,name);fs.writeFileSync(p,text);fs.utimesSync(p,new Date(1000),new Date(1000));}
  async function api(route,body){const response=await fetch('http://127.0.0.1:18766'+route,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+token,...(body===undefined?{}:{'Content-Type':'application/json'})},body:body===undefined?undefined:JSON.stringify(body)});const value=await response.json();assert(response.ok,JSON.stringify(value));return value;}
  async function until(fn){const end=Date.now()+20000;while(Date.now()<end){if(await fn())return;await new Promise(r=>setTimeout(r,200));}throw Error('Timed out waiting for agent processing');}

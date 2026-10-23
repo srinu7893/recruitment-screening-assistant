@@ -71,6 +71,8 @@ class Automation:
             records = [json.loads(row[0]) for row in db.execute('SELECT document FROM intake_records')]
         records.sort(key=lambda r: r['at'], reverse=True)
         return {'settings': self.settings(), 'inbox_path': str(self.folder) if self.folder else None,
+                'inbox_available': bool(self.folder), 'feed_available': bool(self.config.get('connector_url')),
+                'scheduled_sources_available': bool(self.folder or self.config.get('connector_url')),
                 'feed_configured': bool(self.config.get('connector_url')),
                 'running': self.lock.locked(), 'events': events, 'records': records[:100],
                 'record_counts': {'total': len(records), 'queued': sum(r['status'] == 'queued' for r in records),

@@ -17,6 +17,10 @@ class ScreeningService:
 
     def create_role(self, role):
         validate_role(role)
+        if self.provider.name == 'rules':
+            from .rules import criterion_terms
+            if any(not criterion_terms(c) for c in role['criteria']):
+                raise ValueError('Add matching phrases to every criterion before approving the role')
         return self.store.create_role(role)
 
     def screen(self, request, metadata=None):

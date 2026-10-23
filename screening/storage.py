@@ -43,6 +43,13 @@ class Store:
                     id TEXT PRIMARY KEY, expires DOUBLE PRECISION NOT NULL, document TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS login_attempts (
                     id TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires DOUBLE PRECISION NOT NULL);
+                CREATE TABLE IF NOT EXISTS workspace_accounts (
+                    username TEXT PRIMARY KEY, document TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS account_recovery (
+                    id TEXT PRIMARY KEY, username TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL,
+                    version TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS worker_heartbeats (
+                    id TEXT PRIMARY KEY, at DOUBLE PRECISION NOT NULL);
                 CREATE INDEX IF NOT EXISTS jobs_status_idx ON jobs(status);
                 CREATE TABLE IF NOT EXISTS automation_settings (
                     id TEXT PRIMARY KEY, document TEXT NOT NULL);
