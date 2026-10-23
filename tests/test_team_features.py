@@ -126,5 +126,23 @@ class TeamFeatureTests(unittest.TestCase):
         q.heartbeat()
         self.assertNotIn('screening_worker_heartbeat_missing_or_stale',snapshot(self.store)['warnings'])
 
+    def test_paused_ui_schedule_does_not_resume_legacy_feed_polling(self):
+        from screening.maintenance import Maintenance
+        from types import SimpleNamespace
+        from unittest.mock import MagicMock
+        class OneTick:
+            stopped=False
+            def is_set(self):return self.stopped
+            def wait(self,_):self.stopped=True
+        queue=Queue(ScreeningService(self.store,RulesProvider()))
+        automation=MagicMock()
+        automation.settings.return_value={'enabled':False,'feed_enabled':False,'revision':1}
+        server=SimpleNamespace(queue=queue,automation=automation)
+        maintenance=Maintenance(server,{'sync_seconds':60});maintenance.stop=OneTick()
+        with patch('screening.maintenance.time.monotonic',return_value=100),patch('screening.maintenance.sync_feed') as feed:
+            maintenance.loop()
+        feed.assert_not_called()
+        automation.tick.assert_called_once()
+
 
 if __name__=='__main__':unittest.main()

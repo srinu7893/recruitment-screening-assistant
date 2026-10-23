@@ -63,8 +63,8 @@ class Maintenance:
             if hasattr(self.server, 'automation'):
                 try:
                     settings = self.server.automation.settings()
-                    if settings['enabled'] and settings['feed_enabled']:
-                        interval = 0  # The intake agent already owns scheduled feed polling.
+                    if settings.get('revision',0)>0 or (settings['enabled'] and settings['feed_enabled']):
+                        interval = 0  # UI-managed schedules, including pause, own polling.
                 except Exception:
                     interval = 0
             if interval and current - last_sync >= interval:

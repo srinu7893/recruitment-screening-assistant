@@ -29,17 +29,17 @@ cd ~/recruitment-production
 git pull --ff-only origin main
 .cloud-setup-venv/bin/python -m scripts.configure_source \
   --url https://YOUR_APPROVED_HOST/resumes.json \
-  --role-version YOUR_APPROVED_ROLE_VERSION \
-  --interval 300
+  --role-version YOUR_APPROVED_ROLE_VERSION
 ```
 
 This updates the GitHub environment configuration, not the running service.
 For authenticated feeds add `--token-secret NAME --token-version NUMBER` and
 grant the runtime service account Secret Accessor on that secret. Keep the token
 out of the URL and terminal output. Deploy the workflow, then use **Connections →
-Sync now** to verify an import. Enable polling in Automation if you want its
-persisted controls to own the schedule; legacy environment polling is suppressed
-while that agent schedule is enabled, so the feed is not polled twice.
+Sync now** to verify an import. In Automation choose the role, feed and interval,
+then enable automatic intake. The configuration client starts polling paused.
+After Automation settings are saved, they own both scheduling and pausing;
+legacy environment polling is suppressed even while the agent is paused.
 
 Feed contract: `{"candidates":[{"external_id":"source-id","profile_text":"resume text"}]}`.
 Repeated unchanged records reuse existing jobs. An approved live URL and source
