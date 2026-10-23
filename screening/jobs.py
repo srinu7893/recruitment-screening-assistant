@@ -3,6 +3,9 @@ import hashlib
 import json
 from threading import Event, Thread
 import time
+from contextlib import nullcontext
+from uuid import uuid4
+from .errors import processing_error
 
 from .contracts import text, MAX_PROFILE_CHARS
 from .storage import ConflictError, now
@@ -18,13 +21,16 @@ class Queue:
         self.leader = False
         self.worker = None
 
-    def submit(self, request, metadata=None, actor="operator"):
+    def submit(self, request, metadata=None, actor="operator", _db=None):
         if not isinstance(request, dict) or set(request) != {"request_id", "role_version", "profile_text"}:
             raise ValueError("Invalid screening request")
         for field in ("request_id", "role_version"):
             text(request[field], field, 120)
         text(request["profile_text"], "profile_text", MAX_PROFILE_CHARS)
-        self.store.get_role(request["role_version"])
+        if _db is None:
+            self.store.get_role(request["role_version"])
+        elif not _db.execute('SELECT 1 FROM roles WHERE version = ?', (request['role_version'],)).fetchone():
+            raise KeyError('Role not found')
         metadata = metadata or {}
         fingerprint = hashlib.sha256(json.dumps({"request": request, "metadata": metadata,
             "provider": self.service.provider.name, "model": self.service.provider.model}, sort_keys=True).encode()).hexdigest()
@@ -32,8 +38,9 @@ class Queue:
                "request": request, "metadata": metadata, "actor": actor, "error": None,
                "provider": self.service.provider.name, "model": self.service.provider.model,
                "role_version": request['role_version']}
-        with self.store.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
+        with (nullcontext(_db) if _db is not None else self.store.connect()) as db:
+            if _db is None:
+                db.execute("BEGIN IMMEDIATE")
             existing = db.execute("SELECT fingerprint, document FROM jobs WHERE id = ?", (job["id"],)).fetchone()
             if existing:
                 if existing[0] != fingerprint:
@@ -54,7 +61,39 @@ class Queue:
                 'source': job.get('metadata', {}).get('kind', 'paste'),
                 'filename': job.get('metadata', {}).get('filename'),
                 'role_version': job.get('role_version') or job.get('request', {}).get('role_version'),
+                'error_message': processing_error(job.get('error')),
+                'retry_of': job.get('metadata', {}).get('retry_of'),
+                'retry_job_id': job.get('retry_job_id'),
+                'can_retry': job['status'] == 'failed',
                 'finished_at': job.get('finished_at')}
+
+    def retry(self, key, actor):
+        with self.store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute('SELECT document FROM jobs WHERE id = ?', (key,)).fetchone()
+            if not row:
+                raise KeyError('Job not found')
+            original=json.loads(row[0])
+            if original['status']!='failed':
+                raise ConflictError('Only failed jobs can be retried')
+            if original.get('retry_job_id'):
+                child=db.execute('SELECT document FROM jobs WHERE id = ?', (original['retry_job_id'],)).fetchone()
+                if child:
+                    return self.public(json.loads(child[0]))
+                raise ConflictError('The retry record was deleted; upload the source again')
+            saved=db.execute('SELECT document FROM runs WHERE id = ?', (key,)).fetchone()
+            run=json.loads(saved[0]) if saved else None
+            request=original.get('request') or ({'role_version':run['role_version'],'profile_text':run['source']['text']} if run else None)
+            if not request:
+                raise ConflictError('The source is no longer available. Upload the resume again')
+            child_id='retry-'+uuid4().hex
+            request={**request,'request_id':child_id}
+            metadata={**original.get('metadata',{}),'retry_of':key}
+            child=self.submit(request,metadata,actor,_db=db)
+            original['retry_job_id']=child_id
+            db.execute('UPDATE jobs SET document = ? WHERE id = ?', (json.dumps(original),key))
+            db.execute('INSERT INTO audit(at,actor,action,target) VALUES (?, ?, ?, ?)', (now(),actor,'job_retry_requested',key))
+            return child
 
     def list(self):
         with self.store.connect() as db:
@@ -93,7 +132,8 @@ class Queue:
                     if run and run['status'] in ('received', 'evaluating', 'validating'):
                         run.update(status='failed', error='interrupted_retry_with_new_id', result=None)
                         db.execute("UPDATE runs SET document = ? WHERE id = ?", (json.dumps(run), key))
-                job.pop('request', None)
+                if run:
+                    job.pop('request', None)
                 db.execute("UPDATE jobs SET status = ?, document = ? WHERE id = ?", (job['status'], json.dumps(job), key))
 
     def start(self):
@@ -115,15 +155,17 @@ class Queue:
             db.execute("UPDATE jobs SET status = 'processing', document = ? WHERE id = ?", (json.dumps(job), key))
         try:
             if (job["provider"], job["model"]) != (self.service.provider.name, self.service.provider.model):
-                raise ValueError("Provider configuration changed")
+                job.update(status='failed',error='provider_configuration_changed')
+                raise ValueError('Provider configuration changed')
             result = self.service.screen(job["request"], job["metadata"])
             job.update(status="failed" if result["status"] == "failed" else "completed", error=result["error"])
         except Exception:
-            job.update(status="failed", error="job_failed")
+            job.update(status="failed", error=job.get('error') or "job_failed")
         job['role_version'] = job.get('role_version') or job.get('request', {}).get('role_version')
-        job.pop("request", None)  # Keep source only in run; no second profile copy.
         job['finished_at'] = now()
         with self.store.connect() as db:
+            if job['status']=='completed' or db.execute('SELECT 1 FROM runs WHERE id = ?', (key,)).fetchone():
+                job.pop('request',None)
             db.execute("UPDATE jobs SET status = ?, document = ? WHERE id = ?", (job["status"], json.dumps(job), key))
         return True
 
@@ -158,7 +200,9 @@ class Queue:
                 worker.recover()
                 self.leader = True
                 self.last_error = None
+                worker.heartbeat()
                 while not self.stop.is_set():
+                    worker.heartbeat()
                     processed = worker.process_one()
                     if not processed:
                         self.stop.wait(2)
@@ -170,6 +214,15 @@ class Queue:
                 if lock:
                     lock.close()
                 self.worker = None
+
+    def heartbeat(self):
+        current=time.time()
+        if current-getattr(self,'last_heartbeat',0)<10:
+            return
+        with self.store.connect() as db:
+            db.execute('INSERT OR IGNORE INTO worker_heartbeats VALUES (?, ?)', ('screening',current))
+            db.execute('UPDATE worker_heartbeats SET at = ? WHERE id = ?', (current,'screening'))
+        self.last_heartbeat=current
 
     def close(self):
         self.stop.set()

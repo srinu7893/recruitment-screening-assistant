@@ -1,5 +1,11 @@
 # Product review — 22 October 2026
 
+Update, 23 October: the phrase editor, source availability, account/recovery and
+retry gaps described below are addressed in the team-workflow release code.
+Deployment and external source/alert verification remain separate steps. See
+[TEAM_WORKFLOWS.md](TEAM_WORKFLOWS.md) and the release table in [PLAN.md](PLAN.md).
+The findings below are retained as the review that motivated this implementation.
+
 ## Conclusion
 
 The application supports a manager demonstration of resume intake, background

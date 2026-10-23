@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
+const stopServer = require('./stop-server.cjs');
 (async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'screening-ui-'));
   const token = crypto.randomBytes(32).toString('hex');
@@ -125,8 +126,7 @@ const assert = require('node:assert/strict');
     console.log('UI acceptance passed: login, approved role, paste, upload, queue, review, note, comparison, safe text and responsive screenshots.');
   } finally {
     if(browser)await browser.close();
-    server.kill('SIGTERM');
-    await new Promise(resolve => {if(server.exitCode!==null)resolve();else server.once('exit',resolve);});
+    await stopServer(server);
     fs.rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:200});
   }
 })().catch(error=>{console.error(error);process.exit(1);});

@@ -68,13 +68,22 @@ def validate_role(role):
     if not isinstance(role["criteria"], list) or not 1 <= len(role["criteria"]) <= 25:
         raise ValueError("Provide 1 to 25 approved job-related criteria")
     for criterion in role["criteria"]:
-        if not isinstance(criterion, dict) or set(criterion) != {
-            "id", "description", "required", "question"
-        }:
+        required = {'id', 'description', 'required', 'question'}
+        if not isinstance(criterion, dict) or not required.issubset(criterion) or set(criterion)-required-{'phrases'}:
             raise ValueError("Criterion requires id, description, required and question")
         text(criterion["id"], "criterion id", 100)
         text(criterion["description"], "criterion description", 1000)
         text(criterion["question"], "clarification question", 500)
+        if 'phrases' in criterion:
+            phrases = criterion['phrases']
+            if not isinstance(phrases, list) or len(phrases) > 12:
+                raise ValueError('Provide at most 12 matching phrases per criterion')
+            for phrase in phrases:
+                text(phrase, 'matching phrase', 120)
+                if phrase != phrase.strip() or '\n' in phrase or '\r' in phrase:
+                    raise ValueError('Matching phrases must be trimmed, single-line text')
+            if len({p.casefold() for p in phrases}) != len(phrases):
+                raise ValueError('Matching phrases must be unique within a criterion')
     evaluate({"role_version": role["role_version"], "criteria": role["criteria"],
               "sources": {}, "assessments": []})
 

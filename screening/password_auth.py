@@ -6,6 +6,7 @@ import re
 import secrets
 import time
 from http.cookies import SimpleCookie, CookieError
+from .accounts import AccountManagement, account_version
 
 
 def hash_password(password):
@@ -24,13 +25,13 @@ def verify(password, encoded):
     return hmac.compare_digest(actual, expected)
 
 
-class PasswordAuth:
+class PasswordAuth(AccountManagement):
     mode = 'password'
 
     def __init__(self, store, accounts, secure):
         if not isinstance(accounts, list) or not accounts:
             raise ValueError('Configure SCREENING_PASSWORD_ACCOUNTS')
-        self.accounts = accounts
+        self.bootstrap = accounts
         self.store = store
         self.cookie_name = '__Host-screening_session' if secure else 'screening_session'
         self.secure = secure
@@ -61,7 +62,8 @@ class PasswordAuth:
         with self.store.connect() as db:
             row = db.execute('SELECT document FROM login_sessions WHERE id = ? AND expires > ?', (key, time.time())).fetchone()
         value = json.loads(row[0]) if row else None
-        return value if value and value['version'] == self.version else None
+        account = self.all_accounts().get(value.get('username')) if value else None
+        return value if account and not account['disabled'] and value.get('version') == account_version(account) else None
 
     def login(self, username, password):
         username = username.strip().lower() if isinstance(username, str) else ''
@@ -84,12 +86,13 @@ class PasswordAuth:
                     db.execute('INSERT INTO login_attempts(id, attempts, expires) VALUES (?, ?, ?)', (key, 1, now+60))
         if limited:
             return None, 'rate_limited'
-        account = next((a for a in self.accounts if a['username'] == username), None)
-        valid = verify(password, (account or self.accounts[0])['password_hash'])
-        if not account or not valid:
+        account = self.all_accounts().get(username)
+        valid = verify(password, (account or self.bootstrap[0])['password_hash'])
+        if not account or account['disabled'] or not valid:
             return None, 'invalid_credentials'
         token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-        value = {'identity': {k: account[k] for k in ('name', 'role')}, 'csrf': csrf, 'version': self.version}
+        value = {'identity': {k: account[k] for k in ('name', 'role')}, 'csrf': csrf,
+                 'username':username,'version':account_version(account)}
         with self.store.connect() as db:
             db.execute('INSERT INTO login_sessions(id, expires, document) VALUES (?, ?, ?)',
                        (hashlib.sha256(token.encode()).hexdigest(), now+28800, json.dumps(value)))

@@ -23,6 +23,7 @@ jobs:
       - run: npm run test:ui
       - run: npm run test:automation
       - run: npm run test:password
+      - run: npm run test:team
       - uses: actions/upload-artifact@v4
         if: always()
         with:

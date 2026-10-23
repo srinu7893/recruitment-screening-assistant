@@ -2,9 +2,25 @@
 import re
 
 
+def criterion_terms(criterion):
+    if 'phrases' in criterion:
+        return criterion['phrases']
+    return re.findall(r'"([^"\n]{1,120})"', criterion['description'])
+
+
+def preview(role, profile=''):
+    from .contracts import validate_role, validate_output
+    validate_role(role)
+    warnings = [{'criterion_id': c['id'], 'message': 'Add at least one matching phrase.'}
+                for c in role['criteria'] if not criterion_terms(c)]
+    result = validate_output(RulesProvider().analyze(role, 'preview', profile), role, 'preview', profile)
+    return {'criteria': [{'id': c['id'], 'phrases': criterion_terms(c)} for c in role['criteria']],
+            'warnings': warnings, 'result': result, 'saved': False}
+
+
 class RulesProvider:
     name = 'rules'
-    model = 'literal-evidence-v1'
+    model = 'literal-evidence-v2'
 
     def analyze(self, role, source_id, profile):
         assessments = []
@@ -12,7 +28,7 @@ class RulesProvider:
             description = criterion['description'].strip()
             # Recruiters explicitly approve literal phrases by quoting them.
             # Unstructured requirements remain unknown instead of guessed.
-            terms = re.findall(r'"([^"\n]{1,120})"', description)
+            terms = criterion_terms(criterion)
             evidence = []
             for term in terms:
                 pattern = r'(?<!\w)' + re.escape(term) + r'(?!\w)'

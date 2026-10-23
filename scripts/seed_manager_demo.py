@@ -43,6 +43,16 @@ def seed(url, username, password):
         keys = {}
         for profile in data['profiles']:
             key = 'manager-demo-v1-'+profile['id'].lower()
+            status,saved=call('/runs?id='+quote(key),expected=(200,404))
+            if status==200:
+                if saved['role_version']!=role['role_version'] or saved['source']['text'].strip()!=profile['text'].strip():
+                    raise RuntimeError('An existing demo ID contains different data; no record was replaced')
+                if saved['status'] not in ('awaiting_review','completed'):
+                    raise RuntimeError('An existing demo run needs attention. Retry it from processing jobs before loading again.')
+                if sum(a['status']=='partial' for a in saved['result']['assessments'])!=profile['expected_mentions']:
+                    raise RuntimeError('Existing demo evidence differs from the fixture; inspect it before loading again')
+                print(profile['id']+': existing saved review retained')
+                continue
             keys[key] = profile
             call('/uploads', {'request_id':key,'role_version':role['role_version'],
                  'filename':profile['id']+'-FICTIONAL-'+profile['name'].replace(' ','-')+'.txt',

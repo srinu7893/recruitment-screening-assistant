@@ -16,6 +16,86 @@ from screening.database import DatabaseUnavailable
 
 @unittest.skipUnless(os.getenv('TEST_DATABASE_URL'), 'PostgreSQL integration service not configured')
 class PostgreSQLTests(unittest.TestCase):
+    def test_last_admin_guard_is_serialized_across_instances(self):
+        from screening.password_auth import PasswordAuth,hash_password
+        password='long-admin-password-for-race'
+        admin={'username':'admin','name':'Admin','role':'admin','password_hash':hash_password(password)}
+        first=PasswordAuth(self.store,[admin],True)
+        first.manage('admin',{'action':'create','username':'second','name':'Second','role':'admin',
+                             'password':password,'admin_password':password})
+        second=PasswordAuth(Store(self.url),[admin],True)
+        def disable_other(actor):
+            auth=first if actor=='admin' else second
+            target='second' if actor=='admin' else 'admin'
+            account=next(a for a in auth.public_accounts() if a['username']==target)
+            try:
+                auth.manage(actor,{'action':'update',**account,'disabled':True,'admin_password':password})
+                return True
+            except (ValueError,ConflictError):
+                return False
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertEqual(sum(pool.map(disable_other,['admin','second'])),1)
+        self.assertEqual(sum(a['role']=='admin' and not a['disabled'] for a in first.public_accounts()),1)
+
+    def test_team_accounts_recovery_and_retry_transactions(self):
+        from screening.password_auth import PasswordAuth,hash_password
+        from screening.rules import RulesProvider
+        from unittest.mock import patch
+        password='postgres-admin-password-12345'
+        admin={'username':'admin','name':'Admin','role':'admin','password_hash':hash_password(password)}
+        first=PasswordAuth(self.store,[admin],True)
+        first.manage('admin',{'action':'create','username':'user','name':'User','role':'viewer',
+                             'password':'long-initial-password-123','admin_password':password})
+        other=PasswordAuth(Store(self.url),[admin],True)
+        (token,_),_=other.login('user','long-initial-password-123')
+        cookie=other.cookie(token)
+        code=first.manage('admin',{'action':'recovery','username':'user','revision':0,'admin_password':password})['recovery_code']
+        def use_code(_):
+            try:other.recover('user',code,'long-replacement-password-123');return True
+            except ValueError:return False
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            self.assertEqual(sum(pool.map(use_code,range(2))),1)
+        self.assertIsNone(other.session(cookie))
+        service=ScreeningService(self.store,RulesProvider())
+        service.create_role({'role_version':'team:v1','title':'Support','approved_by':'Admin','criteria':[
+            {'id':'python','description':'Support scripts','phrases':['Python'],'required':True,'question':'Describe your work.'}]})
+        queue=Queue(service)
+        queue.submit({'request_id':'failed-before-run','role_version':'team:v1','profile_text':'Used Python for support.'})
+        with patch.object(service,'screen',side_effect=RuntimeError('not public')):queue.process_one()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            children=list(pool.map(lambda _:queue.retry('failed-before-run','Admin'),range(2)))
+        self.assertEqual(len({c['id'] for c in children}),1)
+        queue.process_one()
+        self.assertEqual(self.store.get_run(children[0]['id'])['status'],'awaiting_review')
+
+    def test_encrypted_restore_into_an_isolated_postgresql_schema(self):
+        from tempfile import TemporaryDirectory
+        from unittest.mock import patch
+        from uuid import uuid4
+        from cryptography.fernet import Fernet
+        from psycopg import sql
+        from screening.backup import write_backup,restore
+        keys=seed(self.store)['run_ids']
+        run=operations.note(self.store,keys[0],{'revision':0,'text':'Synthetic restore check.'},'Admin')
+        schema='recruitment_restorecheck_'+uuid4().hex[:16]
+        connection=self.store.database.open_raw(autocommit=True)
+        try:
+            connection.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
+            with TemporaryDirectory() as folder:
+                key=Path(folder)/'key';key.write_bytes(Fernet.generate_key());archive=Path(folder)/'backup'
+                write_backup(self.store,archive,key)
+                with patch.dict(os.environ,{'SCREENING_DB_SCHEMA':schema}):
+                    isolated=Store(self.url)
+                    counts=restore(isolated,archive,key)
+                    self.assertEqual(counts['runs'],6)
+                    self.assertEqual(isolated.get_run(keys[0]),run)
+                    isolated.audit('Admin','restore_verified','synthetic')
+                    with self.assertRaisesRegex(ValueError,'empty'):restore(isolated,archive,key)
+            self.assertEqual(len(self.store.list_runs()),6)
+        finally:
+            connection.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
+            connection.close()
+
     def test_cloud_smoke_over_https_with_real_database_and_stubbed_scanner(self):
         """Exercise the deployment checker itself; real scanner has separate CI."""
         from datetime import datetime, timedelta, timezone
@@ -69,6 +149,11 @@ class PostgreSQLTests(unittest.TestCase):
                 self.assertEqual(len(runs), 5)
                 self.assertTrue(all(len(run.get('notes', [])) == 1 for run in runs))
                 self.assertTrue(all('FICTIONAL' in run['source']['metadata']['filename'] for run in runs))
+                from scripts.load_check import check as load_check
+                with patch('scripts.load_check.build_opener',side_effect=trusted_opener),patch('screening.documents.scan_upload',return_value={'status':'clean','engine':'clamd'}):
+                    report=load_check(f'https://localhost:{server.server_port}','admin',password,count=2,workers=2)
+                self.assertTrue(report['all_results_verified'])
+                self.assertEqual(len(self.store.list_runs()),5)
             finally:
                 server.shutdown(); server.server_close(); thread.join()
 
@@ -109,7 +194,7 @@ class PostgreSQLTests(unittest.TestCase):
             self.fail('Tests may reset only the dedicated localhost screening_test database')
         self.store = Store(self.url)
         with self.store.connect() as db:
-            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events, automation_settings, intake_records, automation_events, login_sessions, login_attempts RESTART IDENTITY')
+            db.execute('TRUNCATE roles, runs, jobs, audit, webhook_events, automation_settings, intake_records, automation_events, login_sessions, login_attempts, workspace_accounts, account_recovery, worker_heartbeats RESTART IDENTITY')
 
     def test_password_sessions_and_rate_limits_shared_across_instances(self):
         from screening.password_auth import PasswordAuth, hash_password
