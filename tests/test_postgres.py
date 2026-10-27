@@ -16,6 +16,52 @@ from screening.database import DatabaseUnavailable
 
 @unittest.skipUnless(os.getenv('TEST_DATABASE_URL'), 'PostgreSQL integration service not configured')
 class PostgreSQLTests(unittest.TestCase):
+    def test_scheduled_backup_reads_only_isolated_schema_and_uploads_encrypted_snapshot(self):
+        from unittest.mock import patch
+        from uuid import uuid4
+        from cryptography.fernet import Fernet
+        from psycopg import sql
+        from psycopg.errors import ReadOnlySqlTransaction
+        from screening.database import Database
+        from scripts.scheduled_backup import run_backup
+        schema='recruitment_backupcheck_'+uuid4().hex[:16]
+        key=Fernet.generate_key()
+        created=[];uploads=[]
+        config={'project':'example-project','schema':schema,'bucket':'recruitment-backups-test',
+                'database_secret':{'name':'recruitment-database','version':'1'},
+                'key_secret':{'name':'recruitment-backup-key','version':'1'}}
+        owner=self.store.database.open_raw(autocommit=True)
+        owner.execute(sql.SQL('CREATE SCHEMA {}').format(sql.Identifier(schema)))
+        def database(_):
+            instance=Database(self.url);created.append(instance);return instance
+        def command(args):
+            if 'secrets' in args:
+                return key.decode() if 'recruitment-backup-key' in args else 'postgresql://u:private@db.example/db?sslmode=verify-full'
+            archive=Path(args[3]);uploads.append(archive)
+            payload=json.loads(Fernet(key).decrypt(archive.read_bytes()))
+            self.assertEqual(len(payload['tables']['runs']['rows']),6)
+            self.assertEqual(len(payload['tables']['roles']['rows']),1)
+            self.assertNotIn('login_sessions',payload['tables'])
+            self.assertNotIn(b'profile_text',archive.read_bytes())
+            return ''
+        try:
+            with patch.dict(os.environ,{'SCREENING_DB_SCHEMA':schema}):
+                source=Store(self.url);seed(source)
+                with patch('screening.database.Database',side_effect=database), \
+                        patch('scripts.scheduled_backup.command',side_effect=command):
+                    result=run_backup(config)
+                self.assertEqual(result['schema'],schema)
+                self.assertEqual(len(created),1)
+                with self.assertRaises(ReadOnlySqlTransaction):
+                    with created[0].connect() as db:
+                        db.execute("INSERT INTO audit(at,actor,action,target) VALUES ('test','test','test','test')")
+                self.assertEqual(len(source.list_runs()),6)
+            self.assertEqual(len(uploads),1)
+            self.assertFalse(uploads[0].parent.exists())
+        finally:
+            owner.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
+            owner.close()
+
     def test_last_admin_guard_is_serialized_across_instances(self):
         from screening.password_auth import PasswordAuth,hash_password
         password='long-admin-password-for-race'
@@ -103,6 +149,7 @@ class PostgreSQLTests(unittest.TestCase):
         from threading import Thread
         from unittest.mock import patch
         import ssl
+        import ipaddress
         from urllib.request import build_opener, HTTPSHandler
         from cryptography import x509
         from cryptography.x509.oid import NameOID
@@ -117,7 +164,7 @@ class PostgreSQLTests(unittest.TestCase):
         certificate = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
                        .serial_number(x509.random_serial_number()).not_valid_before(datetime.now(timezone.utc)-timedelta(minutes=1))
                        .not_valid_after(datetime.now(timezone.utc)+timedelta(days=1))
-                       .add_extension(x509.SubjectAlternativeName([x509.DNSName('localhost')]), critical=False)
+                       .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address('127.0.0.1'))]), critical=False)
                        .sign(key, hashes.SHA256()))
         password = 'synthetic-password-for-https-check'
         accounts = [{'username':'admin','name':'Admin','role':'admin','password_hash':hash_password(password)}]
@@ -127,7 +174,7 @@ class PostgreSQLTests(unittest.TestCase):
             cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
             key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
             server = make_server(ScreeningService(self.store, RulesProvider()), port=0,
-                                 config={'public_url':'https://localhost','allowed_hosts':set()})
+                                 config={'public_url':'https://127.0.0.1','allowed_hosts':set()})
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
             context.load_cert_chain(cert_path, key_path)
             server.socket = context.wrap_socket(server.socket, server_side=True)
@@ -136,22 +183,24 @@ class PostgreSQLTests(unittest.TestCase):
             def trusted_opener(*handlers):
                 return build_opener(*handlers, HTTPSHandler(context=client_context))
             try:
-                with patch('scripts.cloud_smoke.build_opener', side_effect=trusted_opener), patch('screening.documents.scan_upload', return_value={'status':'clean','engine':'clamd'}):
-                    smoke(f'https://localhost:{server.server_port}', 'admin', password)
+                with patch('scripts.cloud_smoke.build_opener', side_effect=trusted_opener), \
+                        patch('screening.documents.scan_upload', return_value={'status':'clean','engine':'clamd'}), \
+                        patch('screening.scanning.check_signatures', return_value=None):
+                    smoke(f'https://127.0.0.1:{server.server_port}', 'admin', password)
                 self.assertEqual(self.store.list_runs(), [])
                 with self.store.connect() as db:
                     self.assertEqual(db.execute('SELECT count(*) FROM login_sessions').fetchone()[0], 0)
                 from scripts.seed_manager_demo import seed as seed_manager
                 with patch('scripts.seed_manager_demo.build_opener', side_effect=trusted_opener), patch('screening.documents.scan_upload', return_value={'status':'clean','engine':'clamd'}):
-                    seed_manager(f'https://localhost:{server.server_port}', 'admin', password)
-                    seed_manager(f'https://localhost:{server.server_port}', 'admin', password)
+                    seed_manager(f'https://127.0.0.1:{server.server_port}', 'admin', password)
+                    seed_manager(f'https://127.0.0.1:{server.server_port}', 'admin', password)
                 runs = self.store.list_runs()
                 self.assertEqual(len(runs), 5)
                 self.assertTrue(all(len(run.get('notes', [])) == 1 for run in runs))
                 self.assertTrue(all('FICTIONAL' in run['source']['metadata']['filename'] for run in runs))
                 from scripts.load_check import check as load_check
                 with patch('scripts.load_check.build_opener',side_effect=trusted_opener),patch('screening.documents.scan_upload',return_value={'status':'clean','engine':'clamd'}):
-                    report=load_check(f'https://localhost:{server.server_port}','admin',password,count=2,workers=2)
+                    report=load_check(f'https://127.0.0.1:{server.server_port}','admin',password,count=2,workers=2)
                 self.assertTrue(report['all_results_verified'])
                 self.assertEqual(len(self.store.list_runs()),5)
             finally:

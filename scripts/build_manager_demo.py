@@ -41,7 +41,10 @@ def build(output=None):
     for source, target in [('docs/manager-demo/README.md', 'DEMO-GUIDE.md'),
                            ('docs/manager-demo/PROCESS.md', 'SIMPLE-PROCESS.md'),
                            ('docs/PLAN.md', 'FEATURE-ROADMAP.md'),
-                           ('docs/PRODUCT_REVIEW.md', 'PRODUCT-REVIEW.md')]:
+                           ('docs/PRODUCT_REVIEW.md', 'PRODUCT-REVIEW.md'),
+                           ('docs/TEAM_WORKFLOWS.md', 'TEAM_WORKFLOWS.md'),
+                           ('docs/SCHEDULED_BACKUPS.md', 'SCHEDULED_BACKUPS.md'),
+                           ('docs/ROLLOUT_CHECKLIST.md', 'ROLLOUT_CHECKLIST.md')]:
         content = (ROOT/source).read_text(encoding='utf-8')
         links = {'../PRODUCT_REVIEW.md':'PRODUCT-REVIEW.md', '../PLAN.md':'FEATURE-ROADMAP.md',
                  'manager-demo/PROCESS.md':'SIMPLE-PROCESS.md', 'PRODUCT_REVIEW.md':'PRODUCT-REVIEW.md',

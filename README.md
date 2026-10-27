@@ -91,3 +91,8 @@ This is a single-organization application with a tested cloud deployment impleme
 ### Advanced ingestion and interview review
 
 Greenhouse Harvest v3 selected-resume imports, a cloud ClamAV sidecar with fail-closed uploads, structured interview scorecards, and per-criterion evaluation diagnostics are implemented. The deployment workflow builds both cloud images. See [setup and live acceptance checks](docs/ADVANCED_WORKFLOWS.md). Live ATS credentials, cloud scanner operation and recruiter model validation must still be verified in your environment.
+
+### Live rollout
+
+See [the rollout checklist](docs/ROLLOUT_CHECKLIST.md) for releasing the team
+features, testing production and connecting sources, alerts and daily backups.

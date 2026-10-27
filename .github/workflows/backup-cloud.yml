@@ -1,0 +1,53 @@
+name: Back up recruitment records
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 20 * * *'
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: recruitment-cloud-backup
+  cancel-in-progress: false
+jobs:
+  backup:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.RECRUITMENT_BACKUPS_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    environment: recruitment-cloud
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Require passing tests for this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          run_id=$(gh api "repos/$GH_REPO/actions/workflows/tests.yml/runs" --method GET -f head_sha="$RELEASE_SHA" -f status=success --jq '.workflow_runs[0].id // empty')
+          test -n "$run_id" || { echo 'Wait for Tests to pass on this main commit.'; exit 1; }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate non-secret backup configuration
+        env:
+          BACKUP_CONFIG: ${{ vars.RECRUITMENT_BACKUP_CONFIG_JSON }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from scripts.scheduled_backup import validate
+          config=validate(json.loads(os.environ['BACKUP_CONFIG']))
+          Path('backup-config.json').write_text(json.dumps(config))
+          PY
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.BACKUP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+      - run: python -m pip install -r requirements.txt
+      - name: Encrypt and upload recruitment-only snapshot
+        run: python -m scripts.scheduled_backup --config backup-config.json
