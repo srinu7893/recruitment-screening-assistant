@@ -150,6 +150,10 @@ secure archive/key storage and a retention policy for ongoing operations. A
 restore into a nonempty target is refused; production recovery requires a planned
 cutover to a separately provisioned empty schema.
 
+An opt-in [daily encrypted backup workflow](SCHEDULED_BACKUPS.md) is now available.
+It requires a separate backup identity, private bucket, pinned encryption-key
+secret and an explicit enable flag. It does not use the deployer's identity.
+
 ## 8. Check a small workload
 
 ```bash
@@ -170,6 +174,9 @@ a small workload rehearsal, not a high-volume capacity certification.
 1. Run the backend, PostgreSQL and browser checks; wait for CI on main.
 2. Deploy through the existing Cloud Run workflow.
 3. Run `scripts.cloud_smoke` with the production URL.
+   This also creates a synthetic viewer, checks permissions and one-use recovery,
+   verifies revoked sessions, and disables that account in cleanup. Its disabled
+   account/audit history remains. No existing account password is changed.
 4. Verify account creation/recovery using a disposable test account, source import
    with an approved source, notification delivery, restore drill and workload
    timings. Record which checks actually passed; do not infer live verification

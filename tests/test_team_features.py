@@ -58,6 +58,8 @@ class TeamFeatureTests(unittest.TestCase):
         recovered=self.auth.recover('reviewer',result['recovery_code'],'replacement-long-password-123')
         self.assertTrue(recovered['changed'])
         self.assertIsNone(other.session(cookie))
+        with self.store.connect() as db:
+            self.assertEqual(db.execute('SELECT count(*) FROM login_sessions').fetchone()[0],0)
         with self.assertRaisesRegex(ValueError,'invalid or expired'):
             self.auth.recover('reviewer',result['recovery_code'],'another-long-password-123')
         rows={a['username']:a for a in self.auth.public_accounts()}

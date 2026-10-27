@@ -63,7 +63,13 @@ class PasswordAuth(AccountManagement):
             row = db.execute('SELECT document FROM login_sessions WHERE id = ? AND expires > ?', (key, time.time())).fetchone()
         value = json.loads(row[0]) if row else None
         account = self.all_accounts().get(value.get('username')) if value else None
-        return value if account and not account['disabled'] and value.get('version') == account_version(account) else None
+        valid = account and not account['disabled'] and value.get('version') == account_version(account)
+        if value and not valid:
+            # Revoked sessions are unusable immediately; remove their stored token
+            # on the next request rather than retaining it until the eight-hour TTL.
+            with self.store.connect() as db:
+                db.execute('DELETE FROM login_sessions WHERE id = ?', (key,))
+        return value if valid else None
 
     def login(self, username, password):
         username = username.strip().lower() if isinstance(username, str) else ''

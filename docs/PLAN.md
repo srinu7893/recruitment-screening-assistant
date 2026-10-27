@@ -1,5 +1,20 @@
 # Application status and next work
 
+## Operations follow-up — 27 October 2026
+
+The 23 October main commit passed CI. No subsequent deployment workflow run was
+found during this review. New work adds authenticated live checks for team
+accounts, recovery, viewer permissions, phrase preview and operations, plus an
+opt-in daily encrypted backup workflow. Code availability does not establish live
+verification. Deployment and backup configuration are separate steps. See
+[SCHEDULED_BACKUPS.md](SCHEDULED_BACKUPS.md).
+
+Remaining rollout work needs external access: release the feature code, supply
+one approved live source and notification channel, configure private backup
+storage/key access, and run the live smoke, restore and workload checks. There is
+no unimplemented item among the original five priority code requests. Optional
+future capabilities below require a pilot need and separate acceptance criteria.
+
 ## Team workflow release — 23 October 2026
 
 The following is implemented in code and under release validation. It is not
@@ -24,7 +39,8 @@ This replaces the older phase plan, which still marked deployed features pending
 ## Current process
 
 1. **Create a role.** Approve requirements and questions. Put matching phrases
-   in straight double quotes: `Experience with "SQL"`.
+   in the matching-phrase fields and preview them against sample text. Previously
+   approved roles with quoted phrases remain compatible.
 2. **Add resumes.** Select the role, then upload PDF/DOCX/TXT files or paste text.
 3. **Check processing.** Uploads are scanned and text is extracted; the background
    worker processes saved jobs and prepares evidence reviews.
@@ -52,19 +68,16 @@ negation or synonyms, or automatically mark criteria met.
 | OpenAI adapter | Implemented; unused in this deployment | No API account/key; model quality is not validated |
 | Google IAP | Legacy optional mode | Production uses application login; IAP is not a rollout requirement |
 
-## Prioritized backlog
+## Remaining rollout work
 
-Develop = code change. Configure = connect existing software. Verify = test the
-operating process rather than add a feature.
+The original priority development items are implemented in the release table
+above. These tasks connect and verify the operating application.
 
 | Priority | Type | Next item | Definition of done |
 | --- | --- | --- | --- |
-| 1 | Develop | Matching-phrase fields and role preview | Show phrases per criterion; warn before approving an empty phrase set; preview matching against sample text |
-| 1 | Develop | Clear source availability in Automation | Cloud Run shows upload/feed guidance; unavailable folder controls are hidden or disabled; no-source setup gives a next step |
-| 1 | Develop | Team account administration and recovery | Admin can create, disable and reset individual accounts with an audit trail |
-| 2 | Develop | Consistent errors and retry controls | Every failed screening job has a readable cause and an explicit retry that preserves the original and creates a new job |
+| 1 | Deploy + verify | Release the team workflow features | Main CI passes, deployment succeeds, extended authenticated smoke test passes |
 | 2 | Configure + verify | One approved live feed or ATS source | Authorized imports work end-to-end; duplicates and failures are handled; polling is demonstrated live |
-| 2 | Configure + verify | Alerts and backup/restore procedure | Worker/scanner/database failures raise actionable alerts; a restore exercise recovers agreed records |
+| 2 | Configure + verify | Alerts and scheduled backup/restore | Worker/scanner/database failures raise actionable alerts; daily encrypted upload and an isolated archive restore succeed |
 | 2 | Verify | Load, restart and recruiter pilot | Agree volume and review-quality targets; document results using a representative sample and two reviewers |
 | Later | Develop | Better rules interpretation | Test negation, synonyms and structured experience requirements on a labelled corpus before changing matching behavior |
 | Later | Develop | Original-file storage, notifications, extra ATS mappings | Add if the pilot needs them; define retention and access for stored originals |
@@ -73,7 +86,7 @@ operating process rather than add a feature.
 
 - **Manager demo:** load fictional data and follow the five steps. No further
   core feature is required for a presenter-led demonstration.
-- **Team pilot:** improve phrase setup and source availability, provision
+- **Team pilot:** deploy the implemented phrase/source/account changes, provision
   individual accounts, and agree retention and restore procedures.
 - **Wider rollout:** finish monitoring, load/failure checks and recruiter
   calibration. A deployment smoke test is not an accuracy or scale test.
